@@ -1,0 +1,300 @@
+#!/usr/bin/env bash
+
+# Copyright (c) 2024 Jordi Marqués
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+set -eu
+
+keyboard_feedback() {
+    case "${1}" in
+        "start")
+            printf 'xLRGB\x00\x03\x00' >"${keyboard_leds_device}"
+            ;;
+        "end")
+            printf 'xLRGB\x00\x00\x00' >"${keyboard_leds_device}"
+            ;;
+    esac
+}
+
+module_keyboard_leds() {
+    case "${1}" in
+        "suspend")
+            true # Keyboard feedback already blanks the keyboard leds.
+            ;;
+        "resume")
+            if [[ "${modules[*]}" == *"keyboard_leds"* ]]; then
+                # Resore user specified colours
+                echo "Restore keyboard leds"
+                printf "xLRGB\x${keyboard_leds_resume[2]}\x${keyboard_leds_resume[1]}\x${keyboard_leds_resume[0]}" >"${keyboard_leds_device}"
+            fi
+            ;;
+    esac
+}
+
+module_network() {
+    case "${1}" in
+        "suspend")
+            echo "Shut down network"
+            nmcli networking off
+            nmcli radio all off
+            iw dev wlan0 set power_save on
+            ;;
+        "resume")
+            echo "Start network"
+            nmcli radio all on
+            nmcli networking on
+            ;;
+    esac
+}
+
+module_systemd() {
+    case "${1}" in
+        "suspend")
+            for tmp in "${systemd_services[@]}"; do
+                if systemctl is-active "${tmp}"; then
+                    echo "Stop systemd service ${tmp}"
+                    touch "${runtime_dir}/systemd_${tmp}"
+                    systemctl stop "${tmp}" || true
+                fi
+            done
+            ;;
+        "resume")
+            for tmp in "${systemd_services[@]}"; do
+                if [[ -f "${runtime_dir}/systemd_${tmp}" ]]; then
+                    echo "Start Systemd service: ${tmp}"
+                    rm "${runtime_dir}/systemd_${tmp}"
+                    systemctl start "${tmp}" || true
+                fi
+            done
+            ;;
+    esac
+}
+
+module_cpu() {
+    case "${1}" in
+        "suspend")
+            read -r tmp </sys/devices/system/cpu/cpufreq/policy0/scaling_governor
+            echo "${tmp}" >"${runtime_dir}/scaling_governor"
+            echo "Set cpu scaling govertor to powersave"
+            echo "powersave" >/sys/devices/system/cpu/cpufreq/policy0/scaling_governor
+
+            echo "Set cpus 1-3 offline"
+            echo 0 >/sys/devices/system/cpu/cpu1/online
+            echo 0 >/sys/devices/system/cpu/cpu2/online
+            echo 0 >/sys/devices/system/cpu/cpu3/online
+            ;;
+        "resume")
+            read -r tmp <"${runtime_dir}/scaling_governor"
+            rm "${runtime_dir}/scaling_governor"
+            echo "Restoring cpu scaling govertor to ${tmp}"
+            echo "${tmp}" >/sys/devices/system/cpu/cpufreq/policy0/scaling_governor
+
+            echo "Set cpus 1-3 online"
+            echo 1 >/sys/devices/system/cpu/cpu1/online
+            echo 1 >/sys/devices/system/cpu/cpu2/online
+            echo 1 >/sys/devices/system/cpu/cpu3/online
+            ;;
+    esac
+}
+
+module_display() {
+    case "${1}" in
+        "suspend")
+            # if pgrep -q swayidle >/dev/null; then
+            #     echo "Shut down display (using swayidle)"
+            #     pkill -USR1 swayidle || true
+            #     sleep 0.3
+            # fi
+            echo "Shut down display"
+            read -r tmp </sys/class/tty/tty0/active
+            echo "${tmp}" >"${runtime_dir}/virtual_terminal"
+            chvt "${display_vt}"
+            setterm -term linux --blank=force </dev/console || true
+            read -r tmp </sys/class/backlight/32e60000.dsi.0/brightness
+            echo "${tmp}" >"${runtime_dir}/brightness"
+            echo 0 >/sys/class/backlight/32e60000.dsi.0/brightness
+            ;;
+        "resume")
+            echo "Resume display"
+            setterm -term linux --blank=poke </dev/console || true
+            read -r tmp <"${runtime_dir}/virtual_terminal"
+            rm "${runtime_dir}/virtual_terminal"
+            chvt "${tmp/tty/}"
+            read -r tmp <"${runtime_dir}/brightness"
+            rm "${runtime_dir}/brightness"
+            echo "${tmp}" >/sys/class/backlight/32e60000.dsi.0/brightness
+            ;;
+    esac
+}
+
+module_session_freeze() {
+    case "${1}" in
+        "suspend")
+            for tmp in /sys/fs/cgroup/user.slice/*.slice; do
+                if [[ "${tmp}" == */user-0.slice ]]; then
+                    continue
+                elif [[ -f "${tmp}/cgroup.freeze" ]]; then
+                    echo "Freeze user session ${tmp##*/}"
+                    echo 1 >"${tmp}/cgroup.freeze"
+                fi
+            done
+            ;;
+        "resume")
+            for tmp in /sys/fs/cgroup/user.slice/*.slice; do
+                if [[ "${tmp}" == */user-0.slice ]]; then
+                    continue
+                elif [[ -f "${tmp}/cgroup.freeze" ]]; then
+                    echo "Unfreeze user session ${tmp##*/}"
+                    echo 0 >"${tmp}/cgroup.freeze"
+                fi
+            done
+            ;;
+    esac
+}
+
+module_session_freeze_root() {
+    case "${1}" in
+        "suspend")
+            if [[ -f /sys/fs/cgroup/user.slice/user-0.slice/cgroup.freeze ]]; then
+                echo "Freeze root session ${tmp##*/}"
+                echo 1 >/sys/fs/cgroup/user.slice/user-0.slice/cgroup.freeze
+            fi
+            ;;
+        "resume")
+            if [[ -f /sys/fs/cgroup/user.slice/user-0.slice/cgroup.freeze ]]; then
+                echo "Unfreeze root session ${tmp##*/}"
+                echo 0 >/sys/fs/cgroup/user.slice/user-0.slice/cgroup.freeze
+            fi
+            ;;
+    esac
+}
+
+toggle() {
+    local tmp # To be used by modules
+    local module
+
+    get_status
+
+    # shellcheck disable=SC1091
+    . /etc/psuspend.conf
+
+    case "${status}" in
+        "running")
+            [[ -d "${runtime_dir}" ]] || mkdir "${runtime_dir}"
+            keyboard_feedback start
+            for module in "${modules[@]}"; do
+                "module_${module}" suspend
+            done
+            keyboard_feedback end
+            echo "pseudo-suspended" >"${runtime_dir}/status"
+            ;;
+        "pseudo-suspended")
+            keyboard_feedback start
+            for module in "${modules[@]}"; do
+                "module_${module}" resume
+            done
+
+            if ! [[ "${modules[*]}" == *"keyboard_leds"* ]]; then
+                # User wants keyboard leds to be resumed to a certain colours, do not blank them
+                keyboard_feedback end
+            fi
+            echo "running" >"${runtime_dir}/status"
+            ;;
+    esac
+}
+
+show_help() {
+    local -i ec
+    ec="${1:-0}"
+    echo "Usage:"
+    echo
+    echo "${program_name} status:    show current status."
+    echo "${program_name} toggle:    toggle from pseudo-suspended to running."
+    echo "${program_name} daemon:    toggle on configured keys combination."
+    echo "${program_name} -h|--help: show this help."
+    echo
+    echo "System status may be either 'running' or 'pseudo-suspended'."
+    exit "${ec}"
+}
+
+get_status() {
+    if [[ -f "${runtime_dir}/status" ]]; then
+        read -r status <"${runtime_dir}/status"
+    else
+        status="running"
+    fi
+}
+
+daemon() {
+    local line
+    local -i current_key=0
+
+    # shellcheck disable=SC1091
+    . /etc/psuspend.conf
+
+    echo "Evtest opens ${input_device} and enter loop"
+    /usr/bin/evtest "${input_device}" | while read -r line; do
+        if [[ current_key -eq "${#keys[@]}" ]]; then
+            toggle
+        else
+            case "${line}" in
+                *"EV_KEY"*"(${keys[current_key]}), value 1")
+                    current_key+=1
+                    continue
+                    ;;
+                *"SYN_REPORT"* | *"MSC_SCAN"* | *", value 2")
+                    continue
+                    ;;
+            esac
+        fi
+        current_key=0
+    done
+}
+
+main() {
+    local -a keyboard_leds_resume
+    local -a keys
+    local -a modules
+    local -a systemd_services
+    local -i display_vt
+    local input_device
+    local keyboard_leds_device
+    local program_name="${0##*/}"
+    local runtime_dir="/run/psuspend"
+    local status
+
+    [[ "${#}" -gt 0 ]] || show_help 1
+
+    case "${1:-}" in
+        "status")
+            get_status
+            echo "${status}"
+            ;;
+        "toggle")
+            toggle
+            ;;
+        "daemon")
+            daemon
+            ;;
+        "-h" | "--help")
+            show_help 0
+            ;;
+        *)
+            show_help 1
+            ;;
+    esac
+}
+
+main "${@}"

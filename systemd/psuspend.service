@@ -1,0 +1,10 @@
+[Unit]
+Description=MNT Pocket Reform pseudo-suspend daemon
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/psuspend daemon
+Restart=always
+
+[Install]
+WantedBy=default.target

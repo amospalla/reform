@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+
+# Copyright (c) 2024 Jordi Marqués
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+set -eu
+
+declare progpath
+declare progname
+[[ "${0%/*}" == "" ]] && progpath="/" || progpath="${0%/*}"
+# shellcheck disable=SC1091
+. "${progpath}/reform-libs.sh"
+progname="${0##*/}"
+
+show_help() {
+    local -i ec
+    ec="${1:-0}"
+    echo "usage:"
+    echo
+    echo "${progname} set <red> <green> <blue>: set leds colours, range 0-255."
+    echo "${progname} transition <r> <g> <b> <r> <g> <b> <steps> <wait-seconds>:"
+    echo "            show a colours transition, from rgb1 to rgb2 in given steps and wait time between two step."
+    echo "${progname} -h|--help: show this help."
+    echo
+    echo "Examples:"
+    echo "    ${progname} set 255 0 0"
+    echo "    ${progname} transition  255 0 0  0 255 0  50 0.02"
+
+    exit "${ec}"
+}
+
+main() {
+    local hidraw_device
+
+    [[ "${1:-}" =~ ^(-h|--help)$ ]] && show_help 0 || true
+
+    case "${1:-}" in
+        "-h" | "--help")
+            show_help 0
+            ;;
+        "set")
+            shift
+            [[ "${*}" =~ ^[0-9]+[[:blank:]][0-9]+[[:blank:]][0-9]+$ ]] || show_help 1
+            hidraw_locate && hidraw_device="${__return}"
+            hidraw_leds_set "${hidraw_device}" "${@}"
+            ;;
+        "transition")
+            shift
+            [[ "${*}" =~ ^([0-9]+[[:blank:]]){7}[.0-9]+$ ]] || show_help 1
+            hidraw_locate && hidraw_device="${__return}"
+            hidraw_leds_transition "${hidraw_device}" "${@}"
+            ;;
+        *)
+            show_help 1
+            ;;
+    esac
+}
+
+main "${@}"

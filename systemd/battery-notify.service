@@ -1,0 +1,10 @@
+[Unit]
+Description=MNT Pocket Reform battery notification on keyboard leds
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/battery-notify
+Restart=always
+
+[Install]
+WantedBy=default.target

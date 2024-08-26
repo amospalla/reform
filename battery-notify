@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+
+# Copyright (c) 2024 Jordi Marqués
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+set -eu
+
+declare mypath
+[[ "${0%/*}" == "" ]] && mypath="/" || mypath="${0%/*}"
+# shellcheck disable=SC1091
+. "${mypath}/reform-libs.sh"
+
+notify() {
+    local -i r1 g1 b1 r2 g2 b2 steps
+    local notify_id
+    local wait
+    local hidraw_device
+
+    notify_id="${1}"
+    hidraw_locate
+    # shellcheck disable=SC2154
+    hidraw_device="${__return}"
+    read -r r1 g1 b1 r2 g2 b2 steps wait <<<"${notifications["${notify_id}"]}"
+
+    for _ in {0..2}; do
+        hidraw_leds_transition \
+            "${hidraw_device}" "${r1}" "${g1}" "${b1}" "${r2}" "${g2}" "${b2}" "${steps}" "${wait}"
+    done
+    hidraw_leds_set "${hidraw_device}" 0 0 0
+}
+
+daemon() {
+    local -i previous
+    local notify_id
+    local sign
+    local value
+    local -i capacity
+
+    battery_capacity_get && capacity="${__return}"
+    previous=capacity
+
+    while sleep 45; do
+        battery_capacity_get && capacity="${__return}"
+
+        for notify_id in "${!notifications[@]}"; do
+            [[ "${notify_id}" =~ ^([+-])([0-9]+)$ ]]
+            sign="${BASH_REMATCH[1]}"
+            value="${BASH_REMATCH[2]}"
+            if [[ "${value}" == "${previous}" ]]; then
+                if [[ "${sign}" == "+" && capacity -gt previous ]]; then
+                    notify "${notify_id}"
+                    break
+                elif [[ "${sign}" == "-" && capacity -lt previous ]]; then
+                    notify "${notify_id}"
+                    break
+                fi
+            fi
+        done
+
+        previous=capacity
+    done
+}
+
+main() {
+    local battery_name
+    local -i capacity
+    local -A notifications=()
+
+    for _ in "BAT0" "8xlifepo4"; do
+        if [[ -f "/sys/class/power_supply/${_}/capacity" ]]; then
+            battery_name="${_}"
+            break
+        fi
+    done
+
+    if [[ -z "${battery_name:-}" ]]; then
+        echo "no battery found"
+        exit 1
+    fi
+
+    #                 r1  g1  b1  r2  g2  b2 steps  wait
+    notifications["+95"]="  0   0   0   0  28   0    20 0.060"
+    notifications["+66"]="  0   0   0   0   0  28    20 0.060"
+    notifications["+33"]="  0   0   0  28   0   0    20 0.060"
+    notifications["-33"]=" 28   0   0   0   0   0    20 0.060"
+
+    daemon
+}
+
+main "${@}"
