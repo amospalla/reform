@@ -22,9 +22,9 @@ declare -g __rl_computer_model
 declare -g __rl_hidraw_device
 declare -g __rl_input_device_keyboard
 declare -g -a models
-declare -g -a model_hidraws
-declare -g -a model_input_device_keyboards
-declare -g -a model_battery_names
+declare -g -A model_hidraws
+declare -g -A model_input_device_keyboards
+declare -g -A model_battery_names
 
 # shellcheck disable=SC2034
 models=(
