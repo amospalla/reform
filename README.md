@@ -9,6 +9,7 @@ psuspend:
 - This program disables everything as posible on the computer trying to minimize the power consumption. It does not
   stop it but your screen and keyboard will not respond to until you resume it again.
 - To use it copy psuspend.conf into /etc/psuspend.conf.
+- Also needs `apt-get install evtest`
 
 battery-notify:
 
