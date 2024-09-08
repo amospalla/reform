@@ -33,7 +33,7 @@ source_libs() {
         progpath="${0%/*}" # program not on root
     fi
     # shellcheck disable=SC1091
-    . "${progpath}/reform-libs.sh"
+    . "${progpath}/rmt-lib.sh"
 }
 
 notify() {
