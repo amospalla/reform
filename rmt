@@ -49,6 +49,10 @@ show_help() {
     echo
     echo "    ${progname} gpu set <frequency>: set gpu frequency in Mhz"
     echo
+    echo "    ${progname} wait keyboard: wait until /dev/input/by-id/* device is ready."
+    echo
+    echo "    ${progname} wait hidraw: wait until /dev/hidraw* device is ready."
+    echo
     echo "    ${progname} -h|--help: show this help."
     echo
     echo "Examples:"
@@ -99,6 +103,21 @@ module_gpu() {
     esac
 }
 
+module_wait() {
+    [[ "${#}" -eq 1 ]] || show_help 1
+    case "${1:-}" in
+        "keyboard")
+            input_device_keyboard_get && echo "${__return}"
+            ;;
+        "hidraw")
+            hidraw_device_get && echo "${__return}"
+            ;;
+        *)
+            show_help 1
+            ;;
+    esac
+}
+
 main() {
     local module
 
@@ -108,7 +127,7 @@ main() {
         "-h" | "--help")
             show_help 0
             ;;
-        "leds" | "gpu")
+        "leds" | "gpu" | "wait")
             module="${1}"
             shift
             "module_${module}" "${@}"

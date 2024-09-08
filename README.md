@@ -75,6 +75,10 @@ Usage:
 
     rmt gpu set <frequency>: set gpu frequency in Mhz
 
+    rmt wait keyboard: wait until /dev/input/by-id/* device is ready.
+
+    rmt wait hidraw: wait until /dev/hidraw* device is ready.
+
     rmt -h|--help: show this help.
 
 Examples:
