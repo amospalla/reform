@@ -20,10 +20,10 @@ set -eu
 keyboard_feedback() {
     case "${1}" in
         "start")
-            printf 'xLRGB\x00\x03\x00' >"${keyboard_leds_device}"
+            hidraw_leds_set 0 3 0
             ;;
         "end")
-            printf 'xLRGB\x00\x00\x00' >"${keyboard_leds_device}"
+            hidraw_leds_set 0 0 0
             ;;
     esac
 }
@@ -37,7 +37,7 @@ module_keyboard_leds() {
             if [[ "${modules[*]}" == *"keyboard_leds"* ]]; then
                 # Resore user specified colours
                 echo "Restore keyboard leds"
-                printf "xLRGB\x${keyboard_leds_resume[2]}\x${keyboard_leds_resume[1]}\x${keyboard_leds_resume[0]}" >"${keyboard_leds_device}"
+                hidraw_leds_set "${keyboard_leds_resume[2]}" "${keyboard_leds_resume[1]}" "${keyboard_leds_resume[0]}"
             fi
             ;;
     esac
@@ -244,7 +244,19 @@ daemon() {
     # shellcheck disable=SC1091
     . /etc/psuspend.conf
 
+    if [[ -z "${input_device:-}" ]]; then
+        # Use computer default keyboard device
+        # shellcheck disable=SC2154
+        input_device_keyboard_get && input_device="${__rl_input_device_keyboard}"
+    else
+        # Use user specifiedc keyboard device
+        while [[ ! -e "${input_device}" ]]; do
+            echo "Waiting for ${input_device} to be up ..."
+            sleep 1
+        done
+    fi
     echo "Evtest opens ${input_device} and enter loop"
+
     /usr/bin/evtest "${input_device}" | while read -r line; do
         if [[ current_key -eq "${#keys[@]}" ]]; then
             toggle
@@ -263,6 +275,25 @@ daemon() {
     done
 }
 
+source_libs() {
+    declare -g progpath
+    declare -g progname
+
+    progname="${0##*/}"
+
+    if [[ ! "${0}" == *"/"* ]]; then # path not available (ie: bash script)
+        progpath="$(command -v "${0}")"
+        progpath="${progpath%/*}"
+
+    elif [[ "${0%/*}" == "" ]]; then # program on root
+        progpath="/"
+    else
+        progpath="${0%/*}" # program not on root
+    fi
+    # shellcheck disable=SC1091
+    . "${progpath}/reform-libs.sh"
+}
+
 main() {
     local -a keyboard_leds_resume
     local -a keys
@@ -270,7 +301,6 @@ main() {
     local -a systemd_services
     local -i display_vt
     local input_device
-    local keyboard_leds_device
     local program_name="${0##*/}"
     local runtime_dir="/run/psuspend"
     local status
@@ -297,4 +327,5 @@ main() {
     esac
 }
 
+source_libs
 main "${@}"

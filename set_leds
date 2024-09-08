@@ -17,12 +17,24 @@
 
 set -eu
 
-declare progpath
-declare progname
-[[ "${0%/*}" == "" ]] && progpath="/" || progpath="${0%/*}"
-# shellcheck disable=SC1091
-. "${progpath}/reform-libs.sh"
-progname="${0##*/}"
+source_libs() {
+    declare -g progpath
+    declare -g progname
+
+    progname="${0##*/}"
+
+    if [[ ! "${0}" == *"/"* ]]; then # path not available (ie: bash script)
+        progpath="$(command -v "${0}")"
+        progpath="${progpath%/*}"
+
+    elif [[ "${0%/*}" == "" ]]; then # program on root
+        progpath="/"
+    else
+        progpath="${0%/*}" # program not on root
+    fi
+    # shellcheck disable=SC1091
+    . "${progpath}/reform-libs.sh"
+}
 
 show_help() {
     local -i ec
@@ -42,8 +54,6 @@ show_help() {
 }
 
 main() {
-    local hidraw_device
-
     [[ "${1:-}" =~ ^(-h|--help)$ ]] && show_help 0 || true
 
     case "${1:-}" in
@@ -53,14 +63,12 @@ main() {
         "set")
             shift
             [[ "${*}" =~ ^[0-9]+[[:blank:]][0-9]+[[:blank:]][0-9]+$ ]] || show_help 1
-            hidraw_locate && hidraw_device="${__return}"
-            hidraw_leds_set "${hidraw_device}" "${@}"
+            hidraw_leds_set "${@}"
             ;;
         "transition")
             shift
             [[ "${*}" =~ ^([0-9]+[[:blank:]]){7}[.0-9]+$ ]] || show_help 1
-            hidraw_locate && hidraw_device="${__return}"
-            hidraw_leds_transition "${hidraw_device}" "${@}"
+            hidraw_leds_transition "${@}"
             ;;
         *)
             show_help 1
@@ -68,4 +76,5 @@ main() {
     esac
 }
 
+source_libs
 main "${@}"

@@ -17,28 +17,38 @@
 
 set -eu
 
-declare mypath
-[[ "${0%/*}" == "" ]] && mypath="/" || mypath="${0%/*}"
-# shellcheck disable=SC1091
-. "${mypath}/reform-libs.sh"
+source_libs() {
+    declare -g progpath
+    declare -g progname
+
+    progname="${0##*/}"
+
+    if [[ ! "${0}" == *"/"* ]]; then # path not available (ie: bash script)
+        progpath="$(command -v "${0}")"
+        progpath="${progpath%/*}"
+
+    elif [[ "${0%/*}" == "" ]]; then # program on root
+        progpath="/"
+    else
+        progpath="${0%/*}" # program not on root
+    fi
+    # shellcheck disable=SC1091
+    . "${progpath}/reform-libs.sh"
+}
 
 notify() {
     local -i r1 g1 b1 r2 g2 b2 steps
     local notify_id
     local wait
-    local hidraw_device
 
     notify_id="${1}"
-    hidraw_locate
-    # shellcheck disable=SC2154
-    hidraw_device="${__return}"
     read -r r1 g1 b1 r2 g2 b2 steps wait <<<"${notifications["${notify_id}"]}"
 
     for _ in {0..2}; do
         hidraw_leds_transition \
-            "${hidraw_device}" "${r1}" "${g1}" "${b1}" "${r2}" "${g2}" "${b2}" "${steps}" "${wait}"
+            "${r1}" "${g1}" "${b1}" "${r2}" "${g2}" "${b2}" "${steps}" "${wait}"
     done
-    hidraw_leds_set "${hidraw_device}" 0 0 0
+    hidraw_leds_set 0 0 0
 }
 
 daemon() {
@@ -48,10 +58,11 @@ daemon() {
     local value
     local -i capacity
 
+    # shellcheck disable=SC2154
     battery_capacity_get && capacity="${__return}"
     previous=capacity
 
-    while sleep 45; do
+    while sleep 30; do
         battery_capacity_get && capacity="${__return}"
 
         for notify_id in "${!notifications[@]}"; do
@@ -74,29 +85,17 @@ daemon() {
 }
 
 main() {
-    local battery_name
     local -i capacity
     local -A notifications=()
 
-    for _ in "BAT0" "8xlifepo4"; do
-        if [[ -f "/sys/class/power_supply/${_}/capacity" ]]; then
-            battery_name="${_}"
-            break
-        fi
-    done
-
-    if [[ -z "${battery_name:-}" ]]; then
-        echo "no battery found"
-        exit 1
-    fi
-
-    #                 r1  g1  b1  r2  g2  b2 steps  wait
-    notifications["+95"]="  0   0   0   0  28   0    20 0.060"
-    notifications["+66"]="  0   0   0   0   0  28    20 0.060"
-    notifications["+33"]="  0   0   0  28   0   0    20 0.060"
-    notifications["-33"]=" 28   0   0   0   0   0    20 0.060"
+    #                      r1  g1  b1  r2  g2  b2 steps  wait
+    notifications["+95"]="  0   0   0   0  50   0    20 0.060"
+    notifications["+66"]="  0   0   0   0   0  50    20 0.060"
+    notifications["+33"]="  0   0   0  50   0   0    20 0.060"
+    notifications["-33"]=" 50   0   0   0   0   0    20 0.060"
 
     daemon
 }
 
+source_libs
 main "${@}"

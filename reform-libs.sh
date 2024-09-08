@@ -15,65 +15,106 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-declare -g __return
 declare -g -a __return_array
+declare -g __return
+declare -g __rl_battery_name
+declare -g __rl_computer_model
+declare -g __rl_hidraw_device
+declare -g __rl_input_device_keyboard
+declare -g -a models
+declare -g -a model_hidraws
+declare -g -a model_input_device_keyboards
+declare -g -a model_battery_names
 
-declare -g -a models=(
+# shellcheck disable=SC2034
+models=(
     "MNT Pocket Reform with i.MX8MP Module"
 )
 
-declare -g -A model_hidraws=(
+model_hidraws=(
     ["MNT Pocket Reform with i.MX8MP Module"]="MNT Pocket Reform Input"
 )
 
-hidraw_locate() {
+model_input_device_keyboards=(
+    ["MNT Pocket Reform with i.MX8MP Module"]="/dev/input/by-id/usb-MNT_Pocket_Reform_Input_RP2040-event-kbd"
+)
+
+model_battery_names=(
+    ["MNT Pocket Reform with i.MX8MP Module"]="BAT0"
+)
+
+computer_model_get() {
+    # Return the computer model on __return variable.
+    #
+    # Examples:
+    #     "MNT Pocket Reform with i.MX8MP Module"
+    local text
+    if [[ -n "${__rl_computer_model:-}" ]]; then
+        true # cached
+    else
+        read -r -d "" text </proc/device-tree/model
+        __rl_computer_model="${text}"
+    fi
+    __return="${__rl_computer_model}"
+}
+
+hidraw_device_get() {
     # Return the name of the hidraw device under /dev or returns exit code 1.
+    # This function is cached.
     #
     # Example:
     #     set __return to "hidraw0"
     local device
-    local model
+    local computer_model
     local text
 
-    get_model && model="${__return}"
-
-    if [[ -d /sys/class/hidraw ]]; then
-
-        cd /sys/class/hidraw || return 1
-        for device in *; do
-            if [[ -f "${device}/device/uevent" ]]; then
-                readarray text <"${device}/device/uevent"
-                if [[ "${text[*]}" == *"${model_hidraws["${model}"]}"* ]]; then
-                    __return="/dev/${device}"
-                    cd - >/dev/null || return 1
-                    return 0
-                fi
-            fi
-        done
-        cd - >/dev/null || return 1
-
+    if [[ -n "${__rl_hidraw_device:-}" ]]; then
+        __return="${__rl_hidraw_device}" # cached
+        return 0
     fi
-    return 1
+
+    while :; do
+        computer_model_get && computer_model="${__return}"
+
+        if [[ -d /sys/class/hidraw ]]; then
+
+            cd /sys/class/hidraw || return 1
+            for device in *; do
+                if [[ -f "${device}/device/uevent" ]]; then
+                    readarray text <"${device}/device/uevent"
+                    if [[ "${text[*]}" == *"${model_hidraws["${computer_model}"]}"* ]]; then
+                        cd - >/dev/null || return 1
+                        __rl_hidraw_device="/dev/${device}"
+                        __return="/dev/${device}"
+                        return 0
+                    fi
+                fi
+            done
+            cd - >/dev/null || return 1
+
+        fi
+        echo "Waiting for hidraw device to be up ..."
+        sleep 1
+    done
 }
 
 hidraw_leds_set() {
     # Set keyboard leds colour.
     #
     # Args:
-    #     hidraw_device(str): path to the hidraw device.
     #     r(int): green colour, range 0-255.
     #     g(int): green colour, range 0-255.
     #     b(int): green colour, range 0-255.
     #
     # Example:
-    #     hidraw_leds_set /dev/hidraw0 10 0 255
+    #     hidraw_leds_set 10 0 255
     local hidraw_device
     local r g b
-    hidraw_device="${1}"
+    hidraw_device_get && hidraw_device="${__return}"
     # Get hexadecimal from decimal
-    printf -v r "%02x" "${2}"
-    printf -v g "%02x" "${3}"
-    printf -v b "%02x" "${4}"
+    printf -v r "%02x" "${1}"
+    printf -v g "%02x" "${2}"
+    printf -v b "%02x" "${3}"
 
     # TODO this "0a" makes printf fail
     if [[ "${g}" == "0a" ]]; then
@@ -87,7 +128,6 @@ hidraw_leds_transition() {
     # Set leds transitioning from a start state to an end state.
     #
     # Args:
-    #     hidraw_device(sr): path to the device.
     #     r1(int): start red colour, range 0-255.
     #     g1(int): start green colour, range 0-255.
     #     b1(int): start blue colour, range 0-255.
@@ -98,16 +138,13 @@ hidraw_leds_transition() {
     #     wait(int): time to wait between two steps (seconds)
     #
     # Example:
-    #     hidraw_leds_transition /dev/hidraw0   0 0 64   0 0 128  10 10
-    local hidraw_device wait
+    #     hidraw_leds_transition 0 0 64   0 0 128  10 10
+    local wait
     local -i r1 g1 b1 r2 g2 b2 steps step
-    hidraw_device="${1}"
-    r1="${2}" g1="${3}" b1="${4}" r2="${5}" g2="${6}" b2="${7}"
-    steps="${8}" wait="${9}"
+    r1="${1}" g1="${2}" b1="${3}" r2="${4}" g2="${5}" b2="${6}" steps="${7}" wait="${8}"
 
     for ((step = 1; step <= steps; step++)); do
         hidraw_leds_set \
-            "${hidraw_device}" \
             "$((r1 + (r2 - r1) * step / steps))" \
             "$((g1 + (g2 - g1) * step / steps))" \
             "$((b1 + (b2 - b1) * step / steps))"
@@ -115,18 +152,51 @@ hidraw_leds_transition() {
     done
 }
 
+battery_name_get() {
+    # Return the battery for this computer model
+    #
+    # Example:
+    #     BAT0
+    local computer_model
+    if [[ -n "${__rl_battery_name:-}" ]]; then
+        true # cached
+    else
+        computer_model_get && computer_model="${__return}"
+        __rl_battery_name="${model_battery_names["${computer_model}"]}"
+
+        while ! [[ -d "/sys/class/power_supply/${__rl_battery_name}" ]]; do
+            echo "Waiting for Reform battery to be up..."
+            sleep 1
+        done
+    fi
+    __return="${__rl_battery_name}"
+}
+
 battery_capacity_get() {
     # Return the remaining capacity in percentage (integer).
     # shellcheck disable=SC2154
+    local battery_name
+
+    battery_name_get && battery_name="${__return}"
     read -r __return <"/sys/class/power_supply/${battery_name}/capacity"
 }
 
-get_model() {
-    # Return the computer model on __return variable.
+input_device_keyboard_get() {
+    # Return the computer input device on /dev/input/by-id/...
     #
-    # Examples:
-    #     "MNT Pocket Reform with i.MX8MP Module"
-    local text
-    read -r -d "" text </proc/device-tree/model
-    __return="${text}"
+    # Example:
+    #     /dev/input/by-id/usb-MNT_Pocket_Reform_Input_RP2040-event-kbd
+    local computer_model
+    if [[ -n "${__rl_input_device_keyboard:-}" ]]; then
+        true # cached
+    else
+        computer_model_get && computer_model="${__return}"
+        __rl_input_device_keyboard="${model_input_device_keyboards["${computer_model}"]}"
+
+        while ! [[ -e "${__rl_input_device_keyboard}" ]]; do
+            echo "Waiting for Reform keyboard input device device to be up..."
+            sleep 1
+        done
+    fi
+    __return="${__rl_input_device_keyboard}"
 }
