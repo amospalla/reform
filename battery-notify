@@ -21,6 +21,7 @@ source_libs() {
     declare -g progpath
     declare -g progname
 
+    # shellcheck disable=SC2034
     progname="${0##*/}"
 
     if [[ ! "${0}" == *"/"* ]]; then # path not available (ie: bash script)

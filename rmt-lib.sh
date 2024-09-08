@@ -21,14 +21,14 @@ declare -g __rl_battery_name
 declare -g __rl_computer_model
 declare -g __rl_hidraw_device
 declare -g __rl_input_device_keyboard
-declare -g -a models
+declare -g -a computer_models
 declare -g -A model_hidraws
 declare -g -A model_input_device_keyboards
 declare -g -A model_battery_names
 declare -g -A model_gpu_scheduler_paths
 
 # shellcheck disable=SC2034
-models=(
+computer_models=(
     "MNT Pocket Reform with i.MX8MP Module"
 )
 
