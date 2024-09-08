@@ -23,7 +23,7 @@ chmod 0755 /usr/local/bin/psuspend
 chmod 0644 /etc/systemd/system/psuspend.service
 
 apt-get install evtest # Install dependencies
-systemctl enable suspend # Enable systemd unit
+systemctl enable psuspend # Enable systemd unit
 ```
 
 ### battery-notify
