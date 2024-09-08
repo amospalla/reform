@@ -20,7 +20,7 @@ set -eu
 keyboard_feedback() {
     case "${1}" in
         "start")
-            hidraw_leds_set 0 3 0
+            hidraw_leds_set 0 50 0
             ;;
         "end")
             hidraw_leds_set 0 0 0
@@ -34,7 +34,7 @@ module_keyboard_leds() {
             true # Keyboard feedback already blanks the keyboard leds.
             ;;
         "resume")
-            if [[ "${modules[*]}" == *"keyboard_leds"* ]]; then
+            if [[ "${modules[*]}" == *"keyboard_leds_resume"* ]]; then
                 # Resore user specified colours
                 echo "Restore keyboard leds"
                 hidraw_leds_set "${keyboard_leds_resume[2]}" "${keyboard_leds_resume[1]}" "${keyboard_leds_resume[0]}"
