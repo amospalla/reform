@@ -37,14 +37,14 @@ source_libs() {
 }
 
 notify() {
-    local -i r1 g1 b1 r2 g2 b2 steps
+    local -i r1 g1 b1 r2 g2 b2 steps repetitions repetition
     local notify_id
     local wait
 
     notify_id="${1}"
-    read -r r1 g1 b1 r2 g2 b2 steps wait <<<"${notifications["${notify_id}"]}"
+    read -r r1 g1 b1 r2 g2 b2 steps wait repetitions <<<"${notifications["${notify_id}"]}"
 
-    for _ in {0..2}; do
+    for ((repetition = 0; repetition < repetitions; repetition++)); do
         hidraw_leds_transition \
             "${r1}" "${g1}" "${b1}" "${r2}" "${g2}" "${b2}" "${steps}" "${wait}"
     done
@@ -88,11 +88,13 @@ main() {
     local -i capacity
     local -A notifications=()
 
-    #                      r1  g1  b1  r2  g2  b2 steps  wait
-    notifications["+95"]="  0   0   0   0  50   0    20 0.060"
-    notifications["+66"]="  0   0   0   0   0  50    20 0.060"
-    notifications["+33"]="  0   0   0  50   0   0    20 0.060"
-    notifications["-33"]=" 50   0   0   0   0   0    20 0.060"
+    #                      r1  g1  b1  r2  g2  b2 steps  wait repetitions
+    notifications["+94"]="  0   0   0   0  80   0    20 0.080           1"
+    notifications["+65"]="  0   0   0   0   0  80    20 0.080           1"
+    notifications["+32"]="  0   0   0  80   0   0    20 0.080           1"
+    notifications["-34"]=" 80   0   0   0   0   0    20 0.080           1"
+    notifications["-17"]=" 80   0   0   0   0   0    20 0.040           2"
+    notifications["-5"]="  80   0   0   0   0   0    20 0.016           4"
 
     daemon
 }

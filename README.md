@@ -28,7 +28,13 @@ systemctl enable psuspend # Enable systemd unit
 
 ### battery-notify
 
-- Gives user feedback about battery status by using the keyboard leds.
+Gives user feedback about battery status by using the keyboard leds.
+
+Currently it notifies when:
+
+- the computer is charging and the battery capacity transitions into 95%, 66% and 33% with green, blue and red colours.
+- the computer is discharging and the battery capacity transitions into 33%, 16% and 4%, using red colour with a
+  single slow transition, two faster transitions, or 4 even faster ones.
 
 Install:
 
