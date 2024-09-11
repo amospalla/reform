@@ -28,23 +28,23 @@ keyboard_feedback() {
     esac
 }
 
-module_gpu_frequency() {
+module_interconnect_frequency() {
     case "${1}" in
         "suspend")
-            gpu_frequency_get
-            echo "Set GPU frequency to 200 Mhz"
+            interconnect_frequency_get
+            echo "Set interconnect frequency to 200 Mhz"
             # shellcheck disable=SC2154
             echo "  frequency before: ${__return}"
-            gpu_frequency_set 200000000
-            gpu_frequency_get
+            interconnect_frequency_set 200000000
+            interconnect_frequency_get
             echo "  frequency after:  ${__return}"
             ;;
         "resume")
-            gpu_frequency_get
-            echo "Set GPU frequency to 1.000 Mhz"
+            interconnect_frequency_get
+            echo "Set interconnect frequency to 1.000 Mhz"
             echo "  frequency before: ${__return}"
-            gpu_frequency_set 1000000000
-            gpu_frequency_get
+            interconnect_frequency_set 1000000000
+            interconnect_frequency_get
             echo "  frequency after:  ${__return}"
             ;;
     esac

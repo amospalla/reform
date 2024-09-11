@@ -71,10 +71,6 @@ Usage:
     rmt leds transition <r> <g> <b> <r> <g> <b> <steps> <wait-seconds>:
                 show a colours transition, from rgb1 to rgb2 in given steps and wait time between two step.
 
-    rmt gpu get: show current gpu frequency
-
-    rmt gpu set <frequency>: set gpu frequency in Mhz
-
     rmt wait keyboard: wait until /dev/input/by-id/* device is ready.
 
     rmt wait hidraw: wait until /dev/hidraw* device is ready.
@@ -84,7 +80,6 @@ Usage:
 Examples:
     rmt leds set 255 0 0
     rmt leds transition  255 0 0  0 255 0  50 0.02
-    rmt gpu get
-    rmt gpu set 200
-    rmt gpu set 1000
+    rmt wait keyboard
+    rmt wait hidraw
 ```

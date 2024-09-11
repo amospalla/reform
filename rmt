@@ -45,22 +45,17 @@ show_help() {
     echo "    ${progname} leds transition <r> <g> <b> <r> <g> <b> <steps> <wait-seconds>:"
     echo "                show a colours transition, from rgb1 to rgb2 in given steps and wait time between two step."
     echo
-    echo "    ${progname} gpu get: show current gpu frequency"
+    echo "    ${progname} wait keyboard: wait until this computer model device on /dev/input/by-id/... is ready."
     echo
-    echo "    ${progname} gpu set <frequency>: set gpu frequency in Mhz"
-    echo
-    echo "    ${progname} wait keyboard: wait until /dev/input/by-id/* device is ready."
-    echo
-    echo "    ${progname} wait hidraw: wait until /dev/hidraw* device is ready."
+    echo "    ${progname} wait hidraw: wait until this computer model device on /dev/hidraw... is ready."
     echo
     echo "    ${progname} -h|--help: show this help."
     echo
     echo "Examples:"
     echo "    ${progname} leds set 255 0 0"
     echo "    ${progname} leds transition  255 0 0  0 255 0  50 0.02"
-    echo "    ${progname} gpu get"
-    echo "    ${progname} gpu set 200"
-    echo "    ${progname} gpu set 1000"
+    echo "    ${progname} wait keyboard"
+    echo "    ${progname} wait hidraw"
 
     exit "${ec}"
 }
@@ -76,26 +71,6 @@ module_leds() {
             shift
             [[ "${*}" =~ ^([0-9]+[[:blank:]]){7}[.0-9]+$ ]] || show_help 1
             hidraw_leds_transition "${@}"
-            ;;
-        *)
-            show_help 1
-            ;;
-    esac
-}
-
-module_gpu() {
-    case "${1:-}" in
-        "get")
-            shift
-            [[ "${#}" -eq 0 ]] || show_help 1
-            gpu_frequency_get
-            # shellcheck disable=SC2154
-            echo "$((__return / 1000000))"
-            ;;
-        "set")
-            shift
-            [[ "${*}" =~ ^(200|1000)$ ]] || show_help 1
-            gpu_frequency_set "$((${1} * 1000000))"
             ;;
         *)
             show_help 1
@@ -127,7 +102,7 @@ main() {
         "-h" | "--help")
             show_help 0
             ;;
-        "leds" | "gpu" | "wait")
+        "leds" | "wait")
             module="${1}"
             shift
             "module_${module}" "${@}"
