@@ -25,7 +25,6 @@ declare -g -a computer_models
 declare -g -A model_hidraws
 declare -g -A model_input_device_keyboards
 declare -g -A model_battery_names
-declare -g -A model_interconnect_paths
 
 # shellcheck disable=SC2034
 computer_models=(
@@ -42,10 +41,6 @@ model_input_device_keyboards=(
 
 model_battery_names=(
     ["MNT Pocket Reform with i.MX8MP Module"]="BAT0"
-)
-
-model_interconnect_paths=(
-    ["MNT Pocket Reform with i.MX8MP Module"]="/sys/devices/platform/soc@0/32700000.interconnect/devfreq/32700000.interconnect"
 )
 
 computer_model_get() {
@@ -204,32 +199,4 @@ input_device_keyboard_get() {
         done
     fi
     __return="${__rl_input_device_keyboard}"
-}
-
-interconnect_frequency_get() {
-    local model
-
-    computer_model_get && model="${__return}"
-    read -r __return <"${model_interconnect_paths["${model}"]}/cur_freq"
-}
-
-interconnect_frequency_set() {
-    local -i frequency
-    local model
-
-    frequency="${1}"
-    computer_model_get && model="${__return}"
-
-    case "${frequency}" in
-        "200000000")
-            echo "200000000" >"${model_interconnect_paths["${model}"]}/min_freq"
-            echo "200000000" >"${model_interconnect_paths["${model}"]}/max_freq"
-            echo "1000000000" >"${model_interconnect_paths["${model}"]}/max_freq"
-            ;;
-        "1000000000")
-            echo "1000000000" >"${model_interconnect_paths["${model}"]}/min_freq"
-            echo "1000000000" >"${model_interconnect_paths["${model}"]}/max_freq"
-            echo "200000000" >"${model_interconnect_paths["${model}"]}/min_freq"
-            ;;
-    esac
 }
