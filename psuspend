@@ -18,6 +18,7 @@
 set -eu
 
 keyboard_feedback() {
+    [[ "${feedback_keyboard_led:-false}" == "true" ]] || return
     case "${1}" in
         "start")
             hidraw_leds_transition 0 0 0 0 80 0 25 0.020
@@ -305,6 +306,7 @@ main() {
     local program_name="${0##*/}"
     local runtime_dir="/run/psuspend"
     local status
+    local feedback_keyboard_led # "true"|"false", expected to be set on psuspend.conf file
 
     [[ "${#}" -gt 0 ]] || show_help 1
 
