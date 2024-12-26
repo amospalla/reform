@@ -18,44 +18,80 @@
 declare -g -a __return_array
 declare -g __return
 declare -g __rl_battery_name
-declare -g __rl_computer_model
+declare -g __rl_machine
 declare -g __rl_hidraw_device
 declare -g __rl_input_device_keyboard
-declare -g -a computer_models
-declare -g -A model_hidraws
-declare -g -A model_input_device_keyboards
-declare -g -A model_battery_names
+declare -g -a machines
+declare -g -A machine_hidraws
+declare -g -A machine_input_device_keyboards
+declare -g -A machine_battery_names
 
 # shellcheck disable=SC2034
-computer_models=(
+machines=(
+    "MNT Pocket Reform with BPI-CM4 Module"
+    "MNT Pocket Reform with RCORE RK3588 Module"
     "MNT Pocket Reform with i.MX8MP Module"
+    # "MNT Reform 2 HDMI"
+    # "MNT Reform 2 with BPI-CM4 Module"
+    # "MNT Reform 2 with LS1028A Module"
+    # "MNT Reform 2 with RCORE RK3588 Module"
+    # "MNT Reform 2 with i.MX8MP Module"
+    # "MNT Reform 2"
+    # "MNT Reform Next with RCORE RK3588 Module"
 )
 
-model_hidraws=(
+machine_hidraws=(
+    ["MNT Pocket Reform with BPI-CM4 Module"]="MNT Pocket Reform Input"
+    ["MNT Pocket Reform with RCORE RK3588 Module"]="MNT Pocket Reform Input"
     ["MNT Pocket Reform with i.MX8MP Module"]="MNT Pocket Reform Input"
+    # "MNT Reform 2 HDMI"
+    # "MNT Reform 2 with BPI-CM4 Module"
+    # "MNT Reform 2 with LS1028A Module"
+    # "MNT Reform 2 with RCORE RK3588 Module"
+    # "MNT Reform 2 with i.MX8MP Module"
+    # "MNT Reform 2"
+    # "MNT Reform Next with RCORE RK3588 Module"
 )
 
-model_input_device_keyboards=(
+machine_input_device_keyboards=(
+    ["MNT Pocket Reform with BPI-CM4 Module"]="/dev/input/by-id/usb-MNT_Pocket_Reform_Input_RP2040-event-kbd"
+    ["MNT Pocket Reform with RCORE RK3588 Module"]="/dev/input/by-id/usb-MNT_Pocket_Reform_Input_RP2040-event-kbd"
     ["MNT Pocket Reform with i.MX8MP Module"]="/dev/input/by-id/usb-MNT_Pocket_Reform_Input_RP2040-event-kbd"
+    # "MNT Reform 2 HDMI"]=""
+    # "MNT Reform 2 with BPI-CM4 Module"]=""
+    # "MNT Reform 2 with LS1028A Module"]=""
+    # "MNT Reform 2 with RCORE RK3588 Module"]=""
+    # "MNT Reform 2 with i.MX8MP Module"]=""
+    # "MNT Reform 2"]=""
+    # "MNT Reform Next with RCORE RK3588 Module"]=""
 )
 
-model_battery_names=(
+machine_battery_names=(
+    ["MNT Pocket Reform with BPI-CM4 Module"]="BAT0"
+    ["MNT Pocket Reform with RCORE RK3588 Module"]="BAT0"
     ["MNT Pocket Reform with i.MX8MP Module"]="BAT0"
+    # ["MNT Reform 2 HDMI"]=""
+    # ["MNT Reform 2 with BPI-CM4 Module"]=""
+    # ["MNT Reform 2 with LS1028A Module"]=""
+    # ["MNT Reform 2 with RCORE RK3588 Module"]=""
+    # ["MNT Reform 2 with i.MX8MP Module"]=""
+    # ["MNT Reform 2"]=""
+    # ["MNT Reform Next with RCORE RK3588 Module"]=""
 )
 
-computer_model_get() {
-    # Return the computer model on __return variable.
+machine_get() {
+    # Return the machine on __return variable.
     #
     # Examples:
     #     "MNT Pocket Reform with i.MX8MP Module"
     local text
-    if [[ -n "${__rl_computer_model:-}" ]]; then
+    if [[ -n "${__rl_machine:-}" ]]; then
         true # cached
     else
         read -r -d "" text </proc/device-tree/model
-        __rl_computer_model="${text}"
+        __rl_machine="${text}"
     fi
-    __return="${__rl_computer_model}"
+    __return="${__rl_machine}"
 }
 
 hidraw_device_get() {
@@ -65,7 +101,7 @@ hidraw_device_get() {
     # Example:
     #     set __return to "hidraw0"
     local device
-    local computer_model
+    local machine
     local text
 
     if [[ -n "${__rl_hidraw_device:-}" ]]; then
@@ -73,16 +109,15 @@ hidraw_device_get() {
         return 0
     fi
 
-    while :; do
-        computer_model_get && computer_model="${__return}"
+    machine_get && machine="${__return}"
 
+    while true; do
         if [[ -d /sys/class/hidraw ]]; then
-
             cd /sys/class/hidraw || return 1
             for device in *; do
                 if [[ -f "${device}/device/uevent" ]]; then
                     readarray text <"${device}/device/uevent"
-                    if [[ "${text[*]}" == *"${model_hidraws["${computer_model}"]}"* ]]; then
+                    if [[ "${text[*]}" == *"${machine_hidraws["${machine}"]}"* ]]; then
                         cd - >/dev/null || return 1
                         __rl_hidraw_device="/dev/${device}"
                         __return="/dev/${device}"
@@ -116,7 +151,7 @@ hidraw_leds_set() {
     printf -v g "%02x" "${2}"
     printf -v b "%02x" "${3}"
 
-    # TODO this "0a" makes printf fail
+    # Setting green to "0a" makes printf fail, at least on Pocket Reform
     if [[ "${g}" == "0a" ]]; then
         g="0b"
     fi
@@ -153,16 +188,16 @@ hidraw_leds_transition() {
 }
 
 battery_name_get() {
-    # Return the battery for this computer model
+    # Return the battery for this machine
     #
     # Example:
     #     BAT0
-    local computer_model
+    local machine
     if [[ -n "${__rl_battery_name:-}" ]]; then
         true # cached
     else
-        computer_model_get && computer_model="${__return}"
-        __rl_battery_name="${model_battery_names["${computer_model}"]}"
+        machine_get && machine="${__return}"
+        __rl_battery_name="${machine_battery_names["${machine}"]}"
 
         while ! [[ -d "/sys/class/power_supply/${__rl_battery_name}" ]]; do
             echo "Waiting for Reform battery to be up..."
@@ -186,12 +221,12 @@ input_device_keyboard_get() {
     #
     # Example:
     #     /dev/input/by-id/usb-MNT_Pocket_Reform_Input_RP2040-event-kbd
-    local computer_model
+    local machine
     if [[ -n "${__rl_input_device_keyboard:-}" ]]; then
         true # cached
     else
-        computer_model_get && computer_model="${__return}"
-        __rl_input_device_keyboard="${model_input_device_keyboards["${computer_model}"]}"
+        machine_get && machine="${__return}"
+        __rl_input_device_keyboard="${machine_input_device_keyboards["${machine}"]}"
 
         while ! [[ -e "${__rl_input_device_keyboard}" ]]; do
             echo "Waiting for Reform keyboard input device device to be up..."
