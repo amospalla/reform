@@ -91,10 +91,10 @@ module_cpu() {
             echo "Set cpu scaling govertor to powersave"
             echo "powersave" >/sys/devices/system/cpu/cpufreq/policy0/scaling_governor
 
-            echo "Set cpus 1-3 offline"
-            echo 0 >/sys/devices/system/cpu/cpu1/online
-            echo 0 >/sys/devices/system/cpu/cpu2/online
-            echo 0 >/sys/devices/system/cpu/cpu3/online
+            # echo "Set cpus 1-3 offline"
+            # echo 0 >/sys/devices/system/cpu/cpu1/online
+            # echo 0 >/sys/devices/system/cpu/cpu2/online
+            # echo 0 >/sys/devices/system/cpu/cpu3/online
             ;;
         "resume")
             read -r tmp <"${runtime_dir}/scaling_governor"
@@ -102,10 +102,10 @@ module_cpu() {
             echo "Restoring cpu scaling govertor to ${tmp}"
             echo "${tmp}" >/sys/devices/system/cpu/cpufreq/policy0/scaling_governor
 
-            echo "Set cpus 1-3 online"
-            echo 1 >/sys/devices/system/cpu/cpu1/online
-            echo 1 >/sys/devices/system/cpu/cpu2/online
-            echo 1 >/sys/devices/system/cpu/cpu3/online
+            # echo "Set cpus 1-3 online"
+            # echo 1 >/sys/devices/system/cpu/cpu1/online
+            # echo 1 >/sys/devices/system/cpu/cpu2/online
+            # echo 1 >/sys/devices/system/cpu/cpu3/online
             ;;
     esac
 }
