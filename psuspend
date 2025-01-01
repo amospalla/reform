@@ -16,6 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 set -eu
+set -x
 
 keyboard_feedback() {
     [[ "${feedback_keyboard_led:-false}" == "true" ]] || return
@@ -274,6 +275,7 @@ daemon() {
         fi
         current_key=0
     done
+    echo "Exit: evtest stopped."
 }
 
 source_libs() {
