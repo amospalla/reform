@@ -56,9 +56,9 @@ machine_hidraws=(
 )
 
 machine_input_device_keyboards=(
-    ["MNT Pocket Reform with BPI-CM4 Module"]="/dev/input/by-id/usb-MNT_Pocket_Reform_Input_RP2040-event-kbd|/dev/input/by-id/usb-MNT_Research_Pocket_Reform_Input__1.0_RP2040-event-kbd"
-    ["MNT Pocket Reform with RCORE RK3588 Module"]="/dev/input/by-id/usb-MNT_Pocket_Reform_Input_RP2040-event-kbd|/dev/input/by-id/usb-MNT_Research_Pocket_Reform_Input__1.0_RP2040-event-kbd"
-    ["MNT Pocket Reform with i.MX8MP Module"]="/dev/input/by-id/usb-MNT_Pocket_Reform_Input_RP2040-event-kbd|/dev/input/by-id/usb-MNT_Research_Pocket_Reform_Input__1.0_RP2040-event-kbd"
+    ["MNT Pocket Reform with BPI-CM4 Module"]="/dev/input/by-id/usb-MNT_Pocket_Reform_Input_RP2040-event-kbd|/dev/input/by-id/usb-MNT_Research_Pocket_Reform_Input_1.0_RP2040-event-kbd"
+    ["MNT Pocket Reform with RCORE RK3588 Module"]="/dev/input/by-id/usb-MNT_Pocket_Reform_Input_RP2040-event-kbd|/dev/input/by-id/usb-MNT_Research_Pocket_Reform_Input_1.0_RP2040-event-kbd"
+    ["MNT Pocket Reform with i.MX8MP Module"]="/dev/input/by-id/usb-MNT_Pocket_Reform_Input_RP2040-event-kbd|/dev/input/by-id/usb-MNT_Research_Pocket_Reform_Input_1.0_RP2040-event-kbd"
     # "MNT Reform 2 HDMI"]=""
     # "MNT Reform 2 with BPI-CM4 Module"]=""
     # "MNT Reform 2 with LS1028A Module"]=""
