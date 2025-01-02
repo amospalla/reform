@@ -110,6 +110,16 @@ module_cpu() {
     esac
 }
 
+module_signal_swayidle() {
+    case "${1}" in
+        "suspend")
+            echo "Signal swayidle"
+            sleep 0.4 # Keys up don't resume swayidle
+            pkill --signal SIGUSR1 swayidle
+            ;;
+    esac
+}
+
 module_display() {
     case "${1}" in
         "suspend")
