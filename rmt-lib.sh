@@ -41,9 +41,11 @@ machines=(
 )
 
 machine_hidraws=(
-    ["MNT Pocket Reform with BPI-CM4 Module"]="MNT Pocket Reform Input"
-    ["MNT Pocket Reform with RCORE RK3588 Module"]="MNT Pocket Reform Input"
-    ["MNT Pocket Reform with i.MX8MP Module"]="MNT Pocket Reform Input"
+    # <2025-01-01 firmware: "MNT Pocket Reform Input"
+    # >2025-01-01 firmware: "MNT Research Pocket Reform Input 1.0"
+    ["MNT Pocket Reform with BPI-CM4 Module"]="Pocket Reform Input"
+    ["MNT Pocket Reform with RCORE RK3588 Module"]="Pocket Reform Input"
+    ["MNT Pocket Reform with i.MX8MP Module"]="Pocket Reform Input"
     # "MNT Reform 2 HDMI"
     # "MNT Reform 2 with BPI-CM4 Module"
     # "MNT Reform 2 with LS1028A Module"
