@@ -43,9 +43,9 @@ machines=(
 machine_hidraws=(
     # <2025-01-01 firmware: "MNT Pocket Reform Input"
     # >2025-01-01 firmware: "MNT Research Pocket Reform Input 1.0"
-    ["MNT Pocket Reform with BPI-CM4 Module"]="Pocket Reform Input"
-    ["MNT Pocket Reform with RCORE RK3588 Module"]="Pocket Reform Input"
-    ["MNT Pocket Reform with i.MX8MP Module"]="Pocket Reform Input"
+    ["MNT Pocket Reform with BPI-CM4 Module"]="MNT( Research)? Pocket Reform Input( 1[.]0)?"
+    ["MNT Pocket Reform with RCORE RK3588 Module"]="MNT( Research)? Pocket Reform Input( 1[.]0)?"
+    ["MNT Pocket Reform with i.MX8MP Module"]="MNT( Research)? Pocket Reform Input( 1[.]0)?"
     # "MNT Reform 2 HDMI"
     # "MNT Reform 2 with BPI-CM4 Module"
     # "MNT Reform 2 with LS1028A Module"
@@ -56,9 +56,9 @@ machine_hidraws=(
 )
 
 machine_input_device_keyboards=(
-    ["MNT Pocket Reform with BPI-CM4 Module"]="/dev/input/by-id/usb-MNT_Pocket_Reform_Input_RP2040-event-kbd"
-    ["MNT Pocket Reform with RCORE RK3588 Module"]="/dev/input/by-id/usb-MNT_Pocket_Reform_Input_RP2040-event-kbd"
-    ["MNT Pocket Reform with i.MX8MP Module"]="/dev/input/by-id/usb-MNT_Pocket_Reform_Input_RP2040-event-kbd"
+    ["MNT Pocket Reform with BPI-CM4 Module"]="/dev/input/by-id/usb-MNT_Pocket_Reform_Input_RP2040-event-kbd|/dev/input/by-id/usb-MNT_Research_Pocket_Reform_Input__1.0_RP2040-event-kbd"
+    ["MNT Pocket Reform with RCORE RK3588 Module"]="/dev/input/by-id/usb-MNT_Pocket_Reform_Input_RP2040-event-kbd|/dev/input/by-id/usb-MNT_Research_Pocket_Reform_Input__1.0_RP2040-event-kbd"
+    ["MNT Pocket Reform with i.MX8MP Module"]="/dev/input/by-id/usb-MNT_Pocket_Reform_Input_RP2040-event-kbd|/dev/input/by-id/usb-MNT_Research_Pocket_Reform_Input__1.0_RP2040-event-kbd"
     # "MNT Reform 2 HDMI"]=""
     # "MNT Reform 2 with BPI-CM4 Module"]=""
     # "MNT Reform 2 with LS1028A Module"]=""
@@ -119,7 +119,7 @@ hidraw_device_get() {
             for device in *; do
                 if [[ -f "${device}/device/uevent" ]]; then
                     readarray text <"${device}/device/uevent"
-                    if [[ "${text[*]}" == *"${machine_hidraws["${machine}"]}"* ]]; then
+                    if [[ "${text[*]}" =~ ${machine_hidraws["${machine}"]} ]]; then
                         cd - >/dev/null || return 1
                         __rl_hidraw_device="/dev/${device}"
                         __return="/dev/${device}"
@@ -224,13 +224,21 @@ input_device_keyboard_get() {
     # Example:
     #     /dev/input/by-id/usb-MNT_Pocket_Reform_Input_RP2040-event-kbd
     local machine
+    local path
+    local -a paths
+
     if [[ -n "${__rl_input_device_keyboard:-}" ]]; then
         true # cached
     else
         machine_get && machine="${__return}"
-        __rl_input_device_keyboard="${machine_input_device_keyboards["${machine}"]}"
-
-        while ! [[ -e "${__rl_input_device_keyboard}" ]]; do
+        IFS="|" read -a paths <<<"${machine_input_device_keyboards["${machine}"]}"
+        while true; do
+            for path in "${paths[@]}"; do
+                if [[ -e "${path}" ]]; then
+                    __rl_input_device_keyboard="${path}"
+                    break 2
+                fi
+            done
             echo "Waiting for Reform keyboard input device device to be up..."
             sleep 1
         done
