@@ -115,7 +115,7 @@ module_signal_swayidle() {
         "suspend")
             echo "Signal swayidle"
             sleep 0.4 # Keys up don't resume swayidle
-            pkill --signal SIGUSR1 swayidle
+            pkill --signal SIGUSR1 swayidle || true
             ;;
     esac
 }
