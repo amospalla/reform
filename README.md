@@ -26,6 +26,14 @@ apt-get install evtest # Install dependencies
 systemctl enable psuspend # Enable systemd unit
 ```
 
+When computer is pseudo suspended it executes `nmcli networking off`. If it powers off without resuming that
+network-manager state will persist. To ensure on system boot your network is functional add the folling lines to
+root's cron:
+
+```text
+@reboot /usr/bin/sleep 5 && /usr/bin/nmcli networking on
+```
+
 ### battery-notify
 
 Gives user feedback about battery status by using the keyboard leds.
