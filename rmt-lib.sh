@@ -56,9 +56,9 @@ machine_hidraws=(
 )
 
 machine_input_device_keyboards=(
-    ["MNT Pocket Reform with BPI-CM4 Module"]="/dev/input/by-id/usb-MNT_Pocket_Reform_Input_RP2040-event-kbd|/dev/input/by-id/usb-MNT_Research_Pocket_Reform_Input_1.0_RP2040-event-kbd"
-    ["MNT Pocket Reform with RCORE RK3588 Module"]="/dev/input/by-id/usb-MNT_Pocket_Reform_Input_RP2040-event-kbd|/dev/input/by-id/usb-MNT_Research_Pocket_Reform_Input_1.0_RP2040-event-kbd"
-    ["MNT Pocket Reform with i.MX8MP Module"]="/dev/input/by-id/usb-MNT_Pocket_Reform_Input_RP2040-event-kbd|/dev/input/by-id/usb-MNT_Research_Pocket_Reform_Input_1.0_RP2040-event-kbd"
+    ["MNT Pocket Reform with BPI-CM4 Module"]="usb-MNT_(Research_)?Pocket_Reform_Input_(.*)-event-kbd"
+    ["MNT Pocket Reform with RCORE RK3588 Module"]="usb-MNT_(Research_)?Pocket_Reform_Input_(.*)-event-kbd"
+    ["MNT Pocket Reform with i.MX8MP Module"]="usb-MNT_(Research_)?Pocket_Reform_Input_(.*)-event-kbd"
     # "MNT Reform 2 HDMI"]=""
     # "MNT Reform 2 with BPI-CM4 Module"]=""
     # "MNT Reform 2 with LS1028A Module"]=""
@@ -224,17 +224,18 @@ input_device_keyboard_get() {
     # Example:
     #     /dev/input/by-id/usb-MNT_Pocket_Reform_Input_RP2040-event-kbd
     local machine
+    local expression
     local path
-    local -a paths
 
     if [[ -n "${__rl_input_device_keyboard:-}" ]]; then
         true # cached
     else
         machine_get && machine="${__return}"
-        IFS="|" read -a paths <<<"${machine_input_device_keyboards["${machine}"]}"
+        expression="${machine_input_device_keyboards["${machine}"]}"
         while true; do
-            for path in "${paths[@]}"; do
-                if [[ -e "${path}" ]]; then
+            for path in /dev/input/by-id/*; do
+                [[ -e "${path}" ]] || break
+                if [[ "${path}" =~ /dev/input/by-id/${expression}$ ]]; then
                     __rl_input_device_keyboard="${path}"
                     break 2
                 fi
