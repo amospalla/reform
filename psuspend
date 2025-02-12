@@ -260,7 +260,7 @@ daemon() {
         # shellcheck disable=SC2154
         input_device_keyboard_get && input_device="${__rl_input_device_keyboard}"
     else
-        # Use user specifiedc keyboard device
+        # Use user specified keyboard device
         while [[ ! -e "${input_device}" ]]; do
             echo "Waiting for ${input_device} to be up ..."
             sleep 1
