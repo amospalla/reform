@@ -106,7 +106,7 @@ module_cpu() {
             echo "Restoring cpu scaling govertor to ${tmp}"
             echo "${tmp}" >/sys/devices/system/cpu/cpufreq/policy0/scaling_governor
 
-            echo "Set cpus offline"
+            echo "Set cpus online"
             for cpu in /sys/devices/system/cpu/cpu[0-9]*; do
                 if [[ "${cpu}" != "/sys/devices/system/cpu/cpu0" ]]; then
                     echo 1 >"${cpu}/online"
