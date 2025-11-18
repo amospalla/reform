@@ -3,7 +3,7 @@
 
 # keyboard device where "keypresses" client reads events from. It is automatically
 # detected.
-keyboard_device = "/dev/input/by-id/kanata_default"
+# keyboard_device = "/dev/input/event0"
 
 # Path where the server creates a socket. By default when running under root it is set
 # to "/var/run/mleds.sock".
