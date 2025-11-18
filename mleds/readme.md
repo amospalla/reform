@@ -87,6 +87,34 @@ mkdir "${HOME}/.config/mleds"
 cp -a etc/* "${HOME}/.config/mleds"
 ```
 
+## FAQ
+
+**How do I load the samples on the _sample_ folder?**
+
+All files on load.d, script.d and sample folders are exactly the same, list of commands.
+
+What is the difference? No difference, just that the files on load.d are loaded by the
+server at startup, the files on script.d are only loaded when the user calls
+_run_script_.
+
+Being all of them the same, you can load any of these files with
+
+`cat <file> | mleds client -`
+
+or a bunch of them with
+
+`cat <file1> <file2> | mleds client -`
+
+they are just a bunch of commands, one after the other inside the files.
+
+**Why this format? Why can'it I throw code at it?**
+
+I want it to be simple text file easily readable and writable, no coding at all. But
+any suggestion is welcomed.
+
+The most advanced primitive you will find is the `rectangle` one, available on the
+_add_movie_ action.
+
 ## TODO
 
 - Client to notify about battery status.
