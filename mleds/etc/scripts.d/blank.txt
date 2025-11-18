@@ -4,6 +4,3 @@ action=play_movie
 name=blank
 priority=background
 end=true
-
-action=disconnect
-end=true

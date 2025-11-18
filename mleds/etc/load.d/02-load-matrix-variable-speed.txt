@@ -68,6 +68,3 @@ times=
 0.2
 0.2
 end=true
-
-action=disconnect
-end=true

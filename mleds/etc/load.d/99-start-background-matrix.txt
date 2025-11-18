@@ -4,6 +4,3 @@ action=play_movie
 name=matrix_variable_speed
 priority=background
 end=true
-
-action=disconnect
-end=true

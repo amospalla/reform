@@ -12,6 +12,3 @@ action=play_movie
 name=matrix_clone1
 priority=background
 end=true
-
-action=disconnect
-end=true

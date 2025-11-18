@@ -59,6 +59,3 @@ colors=
 #0000ff
 #000000
 end=true
-
-action=disconnect
-end=true
