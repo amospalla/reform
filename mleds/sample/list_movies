@@ -1,0 +1,3 @@
+// List movies loaded on server
+action=list_movies
+end=true

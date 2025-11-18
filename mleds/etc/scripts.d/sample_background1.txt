@@ -1,0 +1,8 @@
+// Play sample "background1" movie in background.
+action=play_movie
+name=background1
+priority=background
+end=true
+
+action=disconnect
+end=true

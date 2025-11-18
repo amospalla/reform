@@ -1,0 +1,80 @@
+//////////////////////////////
+// Add movie action example //
+//////////////////////////////
+
+action=add_movie
+name=my_new_movie
+
+// We can serially add frames to a movie by either defining them (painting) here,
+// or cloning an already existing movie.
+
+// copy an already existing movie:
+copy_movie=my_movie
+//// modify its brightness, float from 0 to 1.
+// intensity=1.0
+//// for each drawn frame, define how much time it will last. If there are less times
+//// defined than frames, the last frames will all last the last <times> value set.
+//// Time values can be either:
+////     -1: the frame has an infinite timeout. It will stay forever.
+////         use this value only on a background movie or foreground movie which can be
+////         later replaced. If this value is used on an urgent movie it will never end
+////      0: no timeout, the frame will timeout as fast as the server can process it.
+////     >0.0: the frame has the specified timeout.
+// times=<list of float values>
+//// same logic as times, but defines a force color for all the non blank frames.
+// colors=
+//// reverse the order of the frames.
+// reverse=false
+//// creates the frames, and then adds them again in reverse order.
+// back_and_forth=false
+//// number of times to repeat the frames.
+// repetitions=1
+//// Create one or more rectangles with the following parameters:
+//// x and y: start position in the keyboard 12x6 matrix.
+//// width and height: width and height of the rectangle:
+////     1 1: will create a single pixel.
+////     2 2: will create a square of 2x2 pixels.
+//// start_color, end_color, direction and value:
+////     with a value "100" and a direction "up", the rectangle will be fully painted,
+////     having bottom pixels the color specified in start_color, and top pixels having
+////     the color specified in end_color. The other pixels will be a gradient between
+////     these.
+////
+////     with a value "50" and a direction "left", the rectangle will be half painted,
+////     having right pixels the color specified in start_color, and left pixels blank,
+////     only half rectangle will be painted, from right to left.
+// rectangle=<x> <y> <width> <height> <start_color> <end_color> <direction> <fill> <value>
+// rectangle=<x> <y> <width> <height> <start_color> <end_color> <direction> <fill> <value>
+// rectangle...n
+
+// create a new movie:
+//// has the same parameters as "create_movie" above, with the addition of "pixels".
+create_frames=true
+pixels=<list of pixels>
+// pixels accept two formats, one where pixels are on/off, and another where each pixel
+// has its own color, defined by hex rgb.
+//
+// With on/off pixels, a frame consists of 72 pixels, where each pixel is a single
+// character. The dot symbol means off, and any other symbol means on. Example:
+//   .OO.........
+//   .OO.........
+//   ............
+//   ............
+//   ............
+//   ............
+//
+// Example of color frame:
+//    #bf0000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000
+//    #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000
+//    #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000
+//    #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000
+//    #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000
+//    #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000
+//    
+//    #000000  #bf0000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000
+//    #00ff00  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000
+//    #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000
+//    #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000
+//    #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000
+//    #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000  #000000
+end=true

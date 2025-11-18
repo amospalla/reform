@@ -1,0 +1,102 @@
+# hidraw device where mleds sends commands, it is automatically detected.
+# hidraw_device = "/dev/hidraw0"
+
+# keyboard device where "keypresses" client reads events from. It is automatically
+# detected.
+keyboard_device = "/dev/input/by-id/kanata_default"
+
+# Path where the server creates a socket. By default when running under root it is set
+# to "/var/run/mleds.sock".
+# By default when running under another user it is set to "/var/run/<uid>/mleds.sock".
+# socket_path = "/var/run/mleds.sock"
+
+# If server is running under root, can set the user/group owners for the socket.
+# socket_user = "my_user"
+# socket_group = 1000
+# socket_mode = "660"
+
+# Playing queue where "keypresses" is show.
+# keypresses_priority="foreground"
+
+# Mapping of key events to leds. Each array value is a physical key, and its value are
+# the list of keyboard events that will make that led bright.
+# keypresses_keyboard_layout = [
+#     ######### Row 1 #########################################################
+#     "ESC GRAVE",
+#     "1 F1",
+#     "2 F2",
+#     "3 F3",
+#     "4 F4",
+#     "5 F5",
+#     "6 F6",
+#     "7 F7",
+#     "8 F8",
+#     "9 F9",
+#     "0 F10",
+#     "BACKSPACE DELETE",
+#     ######### Row 2 #########################################################
+#     "TAB",
+#     "Q F11",
+#     "W F12",
+#     "E F13",
+#     "R",
+#     "T",
+#     "Y",
+#     "U",
+#     "I",
+#     "O LEFTBRACE",
+#     "P RIGHTBRACE",
+#     "SEMICOLON",
+#     ######### Row 3 #########################################################
+#     "LEFTCTRL",
+#     "A",
+#     "S",
+#     "D",
+#     "F",
+#     "G",
+#     "H",
+#     "J",
+#     "K",
+#     "L",
+#     "APOSTROPHE",
+#     "ENTER",
+#     ######### Row 4 #########################################################
+#     "LEFTSHIFT",
+#     "Z",
+#     "X",
+#     "C",
+#     "V",
+#     "B",
+#     "N",
+#     "M",
+#     "COMMA",
+#     "DOT",
+#     "UP PAGEUP",
+#     "RIGHTALT RIGHTSHIFT",
+#     ######### Row 5 #########################################################
+#     "unset",
+#     "LEFTMETA RIGHTMETA",
+#     "LEFTALT RIGHTALT",
+#     "BACKSLASH",
+#     "EQUAL",
+#     "SPACE",
+#     "SPACE",
+#     "MINUS",
+#     "SLASH",
+#     "LEFT HOME",
+#     "DOWN PAGEDOWN",
+#     "RIGHT END",
+#     ######### Row 6 #########################################################
+#     "unset",
+#     "unset",
+#     "unset",
+#     "unset",
+#     "unset",
+#     "unset",
+#     "unset",
+#     "unset",
+#     "unset",
+#     "unset",
+#     "unset",
+#     "unset",
+# ]

@@ -1,0 +1,92 @@
+[project]
+name = "mleds"
+version = "0.0.1"
+description = "manage MNT Pocket Reform keyboard leds"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+mleds = "mleds.cli:main"
+
+[dependency-groups]
+dev = [
+    "icecream",
+    "mypy",
+    "ptipython",
+    "pynvim",
+    "ruff",
+]
+
+## Mypy ########################################################################
+################################################################################
+################################################################################
+[tool.mypy]
+strict = true
+
+[[tool.mypy.overrides]]
+module = [
+    "icecream.*",
+]
+ignore_missing_imports = true
+
+## Pyright #####################################################################
+################################################################################
+################################################################################
+[tool.pyright]
+# Ignore output diagnostics on these globs
+ignore = ["**"]
+
+## Pydocstyle ##################################################################
+################################################################################
+################################################################################
+[tool.pydocstyle]
+convention = "google"
+
+## Ruff ########################################################################
+################################################################################
+################################################################################
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["ALL"]
+
+ignore = [
+    #"ANN001", # Missing type annotation for function argument ... (Cobert en mypy)
+    "ANN002",  # Missing type annotations for *args
+    "ANN003",  # Missing type annotations for **kwargs
+    #"ANN201", # missing-return-type                  (no m'interessen)
+    #"ANN202", # missing-return-type-private-function (cobert en mypy)
+    #"ARG002", # unused-method-argument               (cobert per PyCharm)
+    "D100",    # missing-docstring-in-public-module   (es molt pesat)
+    "D101",    # undocumented-public-class            (es molt pesat)
+    "D102",    # undocumented-public-method           (es molt pesat)
+    "D103",    # undocumented-public-function         (es molt pesat)
+    "D104",    # missint-docstring-in-public-package  (es molt pesat)
+    "D105",    # undocumented-magic-method            (es molt pesat)
+    "D106",    # undocumented-public-nested-class     (es molt pesat)
+    "D107",    # undocumented-public-init
+    "D403",    # first-line-capitalized
+    "EM101",   # raw-string-in-exception
+    "EM102",   # f-string-in-exception
+    "ERA001",  # Found commented-out code             (no m'interessen)
+    "FBT001",  # boolean-default-value-positional-argument  (no m'interessa)
+    "FBT002",  # Boolean default positional argument in function definition (no m'interessa)
+    "FBT003",  #
+    "FIX002",  # "Line contains TODO, consider resolving the issue"
+    "G004",    # logging-f-string
+    # "I001",  # unsorted-imports                     (cobert per PyCharm)
+    "PLR0913", # too-many-arguments                   (amb mes de 5 arguments es queixa)
+    "PLR2044", # empty-comment
+    "PT009",   # pytest-unittest-assertion
+    "RET505",  # superfluous-else-return
+    "SIM102",  # collapsible-if
+    "SIM108",  # use terniary operator
+    "T201",    # print-found
+    "TD003",   # "Missing issue link for this TODO"
+    "TRY003",  # raise-vanilla-args
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"

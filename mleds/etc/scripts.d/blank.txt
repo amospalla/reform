@@ -1,0 +1,9 @@
+// Play "blank" movie in background.
+// This movie is available by default, and simply blanks the keyboard and waits forever.
+action=play_movie
+name=blank
+priority=background
+end=true
+
+action=disconnect
+end=true

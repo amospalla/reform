@@ -1,0 +1,3 @@
+// List scripts available on the server
+action=list_scripts
+end=true

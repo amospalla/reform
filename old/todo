@@ -1,0 +1,3 @@
+pkill -STOP tuigreet
+pkill -CONT tuigreet
+mesurar bateria

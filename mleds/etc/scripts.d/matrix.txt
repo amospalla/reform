@@ -1,0 +1,17 @@
+// Clone matrix movie with different intensity and frame times, cloned movie
+// is named "matrix_clone1".
+action=add_movie
+name=matrix_clone1
+copy_movie=matrix
+intensity=0.9
+times=0.1
+end=true
+
+// Play the newly created clone.
+action=play_movie
+name=matrix_clone1
+priority=background
+end=true
+
+action=disconnect
+end=true

@@ -1,0 +1,10 @@
+[Unit]
+Description=mleds daemon
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/mleds --verbose server
+
+[Install]
+WantedBy=default.target
+
