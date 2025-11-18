@@ -2,23 +2,6 @@
 
 Keyboard led utilities for MNT Pocket Reform computer.
 
-## Install
-
-```bash
-# As root.
-mkdir /etc/mleds
-cp -a etc/* /etc/
-# suggested configuration, set socket_user to your main user, so it can manage the server.
-mkdir -p /usr/local/lib/systemd/system
-cp mleds.service /usr/local/lib/systemd/system
-systemctl enable mleds.service
-systemctl start mleds.service
-
-# As user.
-mkdir "${HOME}/.config/mleds"
-cp -a etc/* "${HOME}/.config/mleds"
-```
-
 ## Concepts
 
 The server has three movie queues:
@@ -44,12 +27,13 @@ have set.
 - add_movie: create a new named movie. A movie can be created from scratch defining its
   frames in a text file, either as boolean values (set or not set) plus a frame color,
   or by specifying each key color. A movie can be the combination of another existing
-  movies and/or newly created list of frames. When reusing previous created movies
-  things like frame duration times, colors, intensity or repetitions can be set.
+  movies and/or newly created list of frames. Things like frame duration times, colors,
+  intensity or repetitions can be set.
 - play_movie: puts a given movie on one of the three queues.
 - set_intensity: global server modifier that affects brightness.
 - list_movies: show all the loaded movies on the server.
 - list_scripts: show all available scripts on the server.
+- run_script: run a named sript.
 
 Commands are read by:
 
@@ -78,6 +62,30 @@ couple of example script clients.
   it plays on _foreground_ queue.
 - `mleds list_movies|play_movie|list_scripts|run_script|set_intensity` shortcuts to
   sending these commands with the `mleds client "action=<my_action> ... end=true"`.
+
+## Install
+
+Client does not need to run under the same user as the server. Only thing to take into
+consideration is that the server needs write permissions to the hidraw device, and that
+the _keypresses_ client need to be run under an user with read permissions to the
+keyboard device. Also, when server and client are not running within the same user, it
+may be needed to adjust socket_path, socket_user, socket_group and or socket_perms in
+configuration file for client and server.
+
+```bash
+# As root.
+mkdir /etc/mleds
+cp -a etc/* /etc/
+# suggested configuration, set socket_user to your main user, so it can manage the server.
+mkdir -p /usr/local/lib/systemd/system
+cp mleds.service /usr/local/lib/systemd/system
+systemctl enable mleds.service
+systemctl start mleds.service
+
+# As user.
+mkdir "${HOME}/.config/mleds"
+cp -a etc/* "${HOME}/.config/mleds"
+```
 
 ## TODO
 
