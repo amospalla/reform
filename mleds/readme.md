@@ -74,6 +74,7 @@ configuration file for client and server.
 
 ```bash
 # As root.
+cp mleds /usr/local/bin/mleds && chmod 0755 /usr/local/bin/mleds
 mkdir /etc/mleds
 cp -a etc/* /etc/
 # suggested configuration, set socket_user to your main user, so it can manage the server.
@@ -83,6 +84,7 @@ systemctl enable mleds.service
 systemctl start mleds.service
 
 # As user.
+cp mleds "${HOME}/bin" && chmod u+x "${HOME}/bin/mleds"
 mkdir "${HOME}/.config/mleds"
 cp -a etc/* "${HOME}/.config/mleds"
 ```
