@@ -1,6 +1,0 @@
-// Play "matrix_variable_speed" movie.
-// To play the one with fixed frame times, use plain "matrix" instead.
-action=play_movie
-name=matrix_variable_speed
-priority=background
-end=true

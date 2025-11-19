@@ -1,4 +1,4 @@
 action=play_movie
-name=startup
+name=startup1
 priority=urgent
 end=true
