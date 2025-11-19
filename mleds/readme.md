@@ -6,12 +6,13 @@ Keyboard led utilities for MNT Pocket Reform computer.
 
 The server has three movie queues:
 
-- background: it has one movie, if any. Enqueuing in _background_ replaces previous one.
-- foreground: it has one movie, if any.Enqueuing in _foreground_ replaces previous one.
+- background: it has one or no movie. Enqueuing in _background_ replaces the previous one.
+- foreground: it has one or no movie.Enqueuing in _foreground_ replaces the previous one.
 - urgent: it may have an unlimited number of movies.
 
-All movies put into _urgent_ queue are being played, one after another. If there are no
-more _urgent_ movies, then the _background_ movie is played, in loop.
+All movies put into _urgent_ queue are played serially one after another, in the order
+these have been enqueued. Once a movie in this queue has ended it is removed.
+When there are no more _urgent_ movies, then the _background_ movie is played, in loop.
 
 A movie in _background_ (if any) plays in loop, forever. If _urgent_ or _foreground_
 movies are enqueued, once they end, the _background_ movie will resume where it was left.
@@ -117,7 +118,7 @@ I want it to be simple text file easily readable and writable, no coding at all.
 any suggestion is welcomed.
 
 The most advanced primitive you will find is the `rectangle` one, available on the
-_add_movie_ action.
+_add_movie_ command.
 
 ## TODO
 
@@ -132,3 +133,7 @@ _add_movie_ action.
   instead of the first one. This allows movies to have an grup of frames that start the
   movie, which won't play lately on the loop.
 - More configurable options for keypresses colors and times.
+- add to configuration the following keys:
+  - "startup_movie_background"
+  - "startup_movie_foreground"
+  - "startup_movies_urgent"
