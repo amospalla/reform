@@ -76,7 +76,7 @@ class MessagesBuffer:
     def __init__(self, server: "Server") -> None:
         self.lines: list[str] = []
         self.partial_pre = ""  # line contents before "end=true"
-        self.partial_post = ""  # line contents after "end=true""
+        # self.partial_post = ""  # line contents after "end=true""
         self.server = server
 
     async def add(self, line: str) -> tuple[list[str], bool]:
@@ -100,16 +100,22 @@ class MessagesBuffer:
         line = line.strip()
         if not line or line.startswith("//"):
             return response_lines, disconnect
-        if match := re.match(r"(.*)\s*end=true\s*(.*)", line):
+        while match := re.match(r"(.*?)\s*end=true\s*(.*)", line):
             ########################################################################
             # This line marks the end of a message, send this message to the server.
             ########################################################################
-            self.partial_pre, self.partial_post = match.groups()
+            self.partial_pre, line = match.groups()
             if self.partial_pre:
                 self.lines.append(self.partial_pre)
             try:
                 message = message_keyvalues(self.lines)
-                response_lines, disconnect = await self.server.receive_message(message)
+                async with process_messages_lock:
+                    (new_lines, new_disconnect) = await self.server.receive_message(
+                        message,
+                    )
+                response_lines.extend(new_lines)
+                if new_disconnect:
+                    disconnect = True
             except InvalidConfigurationError as e:
                 disconnect = True
                 msg = f"Error: invalid configuration: {e.args[0]}."
@@ -121,13 +127,7 @@ class MessagesBuffer:
                 response_lines.append(f"Unhandled server error: {e!s}")
             else:
                 self.lines.clear()
-                if self.partial_post:
-                    self.lines.append(self.partial_post)
-                if not response_lines:
-                    raise RuntimeError(
-                        "Invalid condition, response_lines can not be empty.",
-                    )
-        else:
+        if line:
             self.lines.append(line)
         return response_lines, disconnect
 
