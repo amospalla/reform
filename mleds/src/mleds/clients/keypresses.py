@@ -16,11 +16,13 @@
 import asyncio
 import logging
 import re
+import sys
 from pathlib import Path
 from typing import TypedDict
 
 from mleds.constants import KEYBOARD_COLUMNS, KEYBOARD_ROWS
 from mleds.mnt import get_keyboard_device
+import contextlib
 
 FRAME_TIME = 0.05
 IDLE_STATE = 6
@@ -261,18 +263,23 @@ async def read_input_events(device: Path) -> None:
 
     while True:
         line = await process.stdout.readline()  # type:ignore[union-attr]
+        if process.returncode is not None:
+            print(f"Evtest command ended with return code {process.returncode}.")
 
         if not line:
-            break  # process finished
-        line = line.decode("utf-8").strip()
+            sys.exit(1)
 
+        line = line.decode("utf-8").strip()
         if match := re.match(
             r"^Event:.*, type 1 \(EV_KEY\).*\(KEY_([A-Z0-9]+)\), value ([012])$",
             line,
         ):
             key, value = match.groups()
             if value != 2:  # noqa: PLR2004
+                print(4)
                 keyboard.new_event(key, int(value))
+        elif line == "evtest: Permission denied":
+            print(line)
 
     # Wait for exit code
     await process.wait()
@@ -286,10 +293,11 @@ async def event_loop(
 ) -> None:
     """Start main event loop."""
     logger.info("Gathering tasks.")
-    await asyncio.gather(
-        read_input_events(device),
-        keyboard.loop(socket_path, keyboard_layout, priority),
-    )
+    with contextlib.suppress(SystemExit):
+        await asyncio.gather(
+            read_input_events(device),
+            keyboard.loop(socket_path, keyboard_layout, priority),
+        )
 
 
 def main(
