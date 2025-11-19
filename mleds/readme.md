@@ -89,6 +89,8 @@ mkdir "${HOME}/.config/mleds"
 cp -a etc/* "${HOME}/.config/mleds"
 ```
 
+To use the _keypresses_ client, install evtest `sudo apt install evtest`.
+
 ## FAQ
 
 **How do I load the samples on the _sample_ folder?**
