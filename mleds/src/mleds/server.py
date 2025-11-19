@@ -96,6 +96,10 @@ class MessagesBuffer:
         """
         disconnect = False
         response_lines: list[str] = []
+
+        line = line.strip()
+        if not line or line.startswith("//"):
+            return response_lines, disconnect
         if match := re.match(r"(.*)\s*end=true\s*(.*)", line):
             ########################################################################
             # This line marks the end of a message, send this message to the server.
@@ -617,14 +621,6 @@ class Server:
 
 def message_keyvalues(lines: list[str]) -> message_t:
     """Return list of key/value tuples from raw input data."""
-    # Remove commented out and empty lines.
-    lines = [
-        line
-        for line in lines
-        if not line.strip().startswith("//")  # Remove comments
-        and line.strip()  # Remove empty lines
-    ]
-
     # Join all the lines and split on "key=value".
     single_line_text = "\n".join(lines).replace("\n", " ")
     parts = [
