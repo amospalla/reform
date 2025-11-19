@@ -18,7 +18,7 @@
 set -eu
 
 # Ask mleds where its socket is.
-SOCKET="$(mleds show_socket)"
+SOCKET="$(mleds path socket)"
 
 get_next_frame() {
     # Generate and play a single frame where there is a rectangle with a given value.

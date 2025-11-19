@@ -26,7 +26,7 @@
 set -eu
 
 # Ask mleds where its socket is.
-SOCKET="$(mleds show_socket)"
+SOCKET="$(mleds path socket)"
 
 send_message() {
     # Using netcat

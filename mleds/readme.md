@@ -63,6 +63,8 @@ couple of example script clients.
   it plays on _foreground_ queue.
 - `mleds list_movies|play_movie|list_scripts|run_script|set_intensity` shortcuts to
   sending these commands with the `mleds client "action=<my_action> ... end=true"`.
+- `mleds path hidraw|keyboard|socket`: show internal used paths used with the current
+  configuration.
 
 ## Install
 

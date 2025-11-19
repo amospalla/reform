@@ -66,18 +66,7 @@ def parse_args() -> argparse.Namespace:
         "Sets the server brightness intensity, affects everything playing. "
         "Format: [+-]<float>."
     )
-    show_hidraw_command_help = (
-        "Show the path to the hidraw device the "
-        "server will use with its current configuration."
-    )
-    show_keyboard_command_help = (
-        "Show the path to the keyboard input device the "
-        "server will use with its current configuration."
-    )
-    show_socket_command_help = (
-        "Show the path to the socket path "
-        "server will use with its current configuration."
-    )
+    show_path_command_help = "List paths for used files by the server."
     play_movie_command_help = "Run the specified movie on the specified queue."
 
     parser = argparse.ArgumentParser(prog=PROGRAM_NAME, description=description)
@@ -88,18 +77,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("-d", "--hidraw-device", required=False, type=Path)
     subparser = parser.add_subparsers(dest="mode", required=True)
     _parser_server = subparser.add_parser("server", help=server_command_help)
-    _parser_get_hidraw = subparser.add_parser(
-        "show_hidraw",
-        help=show_hidraw_command_help,
-    )
-    _parser_get_keyboard = subparser.add_parser(
-        "show_keyboard",
-        help=show_keyboard_command_help,
-    )
-    _parser_get_socket = subparser.add_parser(
-        "show_socket",
-        help=show_socket_command_help,
-    )
     parser_client = subparser.add_parser("client", help=client_command_help)
     parser_oneshot = subparser.add_parser("oneshot", help=oneshot_command_help)
     _parser_keypresses = subparser.add_parser(
@@ -129,6 +106,11 @@ def parse_args() -> argparse.Namespace:
     parser_set_intensity.add_argument("intensity_value")
     parser_client.add_argument("message")
     parser_oneshot.add_argument("message")
+    parser_show_path = subparser.add_parser(
+        "path",
+        help=show_path_command_help,
+    )
+    parser_show_path.add_argument("name", choices=("hidraw", "keyboard", "socket"))
     return parser.parse_args()
 
 
@@ -256,6 +238,13 @@ def main() -> None:  # noqa: C901, PLR0912
         print(configuration.keyboard_device)
     elif args.mode == "show_socket":
         print(configuration.socket_path)
+    elif args.mode == "path":
+        if args.name == "hidraw":
+            print(configuration.hidraw_device)
+        if args.name == "keyboard":
+            print(configuration.keyboard_device)
+        if args.name == "socket":
+            print(configuration.socket_path)
 
 
 async def oneshot(message: str) -> None:
