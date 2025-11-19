@@ -3,6 +3,7 @@ Description=mleds daemon
 
 [Service]
 Type=simple
+Restart=always
 ExecStart=/usr/local/bin/mleds --verbose server
 
 [Install]
