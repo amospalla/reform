@@ -1,0 +1,4 @@
+action=play_movie
+name=startup
+priority=urgent
+end=true
