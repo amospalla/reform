@@ -15,19 +15,18 @@
 
 import asyncio
 import logging
-import re
-import sys
-from pathlib import Path
 from typing import TypedDict
 
+from mleds.clients.base import Client
 from mleds.constants import KEYBOARD_COLUMNS, KEYBOARD_ROWS
-from mleds.mnt import get_keyboard_device
-import contextlib
+from mleds.read_keyboard import InputEventGenerator, evdev_events
 
 FRAME_TIME = 0.05
 IDLE_STATE = 6
 
 keyboard_event = asyncio.Event()
+EVDEV_VALUE_HOLD = 2
+EVDEV_ETYPE_KEYBOARD = 1
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +34,128 @@ logger = logging.getLogger(__name__)
 class Colors(TypedDict):
     color: list[int]
     next: int
+
+
+class KeyPresses(Client):
+    def __init__(self, *args, **kwargs) -> None:  # type:ignore[no-untyped-def]
+        super().__init__(*args, **kwargs)
+        self.keys = [Key() for _ in range(KEYBOARD_COLUMNS * KEYBOARD_ROWS)]
+        self.key_mappings: dict[str, list[Key]] = {}
+
+        for index, key_symbols in enumerate(
+            self.configuration.keypresses_keyboard_layout,
+        ):
+            for key_symbol in [value.upper() for value in key_symbols.split()]:
+                if key_symbol == "UNSET":
+                    continue
+                self.key_mappings.setdefault(f"KEY_{key_symbol}", []).append(
+                    self.keys[index],
+                )
+
+    async def run(self) -> None:
+        await asyncio.gather(
+            self.read_input_events(),
+            self.update_matrix(),
+        )
+
+    async def read_input_events(self) -> None:
+        logger.info("read_input_events(): Started.")
+
+        async for _sec, _usec, etype, code, value in InputEventGenerator(
+            self.configuration.keyboard_device,
+        ):
+            if etype == EVDEV_ETYPE_KEYBOARD and value != EVDEV_VALUE_HOLD:
+                self.new_event(evdev_events[1][code], value)
+
+    async def update_matrix(self) -> None:
+        logger.info("KeyPresses.update_matrix(): Started")
+        skip = True
+        while True:
+            if not skip:
+                await self.send_message(message=self.next_message())
+                self.update_key_colors()
+
+            if skip:
+                skip = False
+                await keyboard_event.wait()
+                keyboard_event.clear()
+            else:
+                try:
+                    await asyncio.wait_for(
+                        keyboard_event.wait(),
+                        timeout=FRAME_TIME,
+                    )
+                    keyboard_event.clear()
+                except TimeoutError:
+                    if all(
+                        (
+                            key.colors_from is colors_depressed
+                            or key.colors_from is colors_depressed_mods
+                        )
+                        and key.state == IDLE_STATE
+                        for key in self.keys
+                    ):
+                        skip = True
+
+    def update_key_colors(self) -> None:
+        for key in self.keys:
+            next_state_number = key.colors_from[key.state]["next"]  # type:ignore[literal-required]
+            key.state = next_state_number
+            key.color = key.colors_from[next_state_number]["color"]  # type:ignore[literal-required]
+
+    def new_event(self, key_symbol: str, value: int) -> None:
+        if key_symbol in self.key_mappings:
+            for key in self.key_mappings[key_symbol]:
+                key.new_event(key_symbol in MODS, value)
+            keyboard_event.set()
+
+    def next_message(self) -> list[str]:
+        colors = " ".join(
+            [
+                f"#{key.color[0]:02X}{key.color[1]:02X}{key.color[2]:02X}"
+                for key in self.keys
+            ],
+        )
+
+        return [
+            "action=add_movie name=keypresses create_frames=true times=1.5 pixels=",
+            colors,
+            "end=true",
+            "action=play_movie name=keypresses",
+            f"priority={self.configuration.keypresses_priority}",
+            "end=true",
+        ]
+
+
+class Key:
+    def __init__(self) -> None:
+        self.colors_from = colors_depressed
+        self.pressed = False
+        self.state: int = IDLE_STATE
+        self.color: list[int] = [0, 0, 0]
+        self.is_mod = False
+
+    def new_event(self, is_mod: bool, new_event: int | bool | None = None) -> None:
+        if new_event is None:
+            # If no new event is notified, means this key keeps the previous event,
+            # either pressed or depressed.
+            new_event = self.state
+
+        if self.pressed and not new_event:
+            if is_mod:
+                self.colors_from = colors_depressed_mods
+            else:
+                self.colors_from = colors_depressed
+            self.state = -1
+            self.pressed = False
+        elif not self.pressed and new_event:
+            if is_mod:
+                self.colors_from = colors_pressed_mods
+            else:
+                self.colors_from = colors_pressed
+
+            self.state = -1
+            self.pressed = True
 
 
 colors_pressed: Colors = {
@@ -101,218 +222,12 @@ colors_depressed_mods: Colors = {
 
 
 MODS = {
-    "LEFTALT",
-    "LEFTCTRL",
-    "LEFTMETA",
-    "LEFTSHIFT",
-    "RIGHTALT",
-    "RIGHTCTRL",
-    "RIGHTMETA",
-    "RIGHTSHIFT",
+    "KEY_LEFTALT",
+    "KEY_LEFTCTRL",
+    "KEY_LEFTMETA",
+    "KEY_LEFTSHIFT",
+    "KEY_RIGHTALT",
+    "KEY_RIGHTCTRL",
+    "KEY_RIGHTMETA",
+    "KEY_RIGHTSHIFT",
 }
-
-
-class Key:
-    def __init__(self) -> None:
-        self.colors_from = colors_depressed
-        self.pressed = False
-        self.state: int = IDLE_STATE
-        self.color: list[int] = [0, 0, 0]
-        self.is_mod = False
-
-    def new_event(self, is_mod: bool, new_event: int | bool | None = None) -> None:
-        if new_event is None:
-            # If no new event is notified, means this key keeps the previous event,
-            # either pressed or depressed.
-            new_event = self.state
-
-        if self.pressed and not new_event:
-            if is_mod:
-                self.colors_from = colors_depressed_mods
-            else:
-                self.colors_from = colors_depressed
-            self.state = -1
-            self.pressed = False
-        elif not self.pressed and new_event:
-            if is_mod:
-                self.colors_from = colors_pressed_mods
-            else:
-                self.colors_from = colors_pressed
-
-            self.state = -1
-            self.pressed = True
-
-
-class Keyboard:
-    def __init__(self) -> None:
-        self.keys = [Key() for _ in range(KEYBOARD_COLUMNS * KEYBOARD_ROWS)]
-        self.key_mappings: dict[str, list[Key]] = {}
-        self.reader: asyncio.StreamReader | None = None
-        self.writer: asyncio.StreamWriter | None = None
-        self.priority = "foreground"
-
-    def update_key_colors(self) -> None:
-        for key in self.keys:
-            next_state_number = key.colors_from[key.state]["next"]  # type:ignore[literal-required]
-            key.state = next_state_number
-            key.color = key.colors_from[next_state_number]["color"]  # type:ignore[literal-required]
-
-    def new_event(self, key_symbol: str, value: int) -> None:
-        if key_symbol in self.key_mappings:
-            for key in self.key_mappings[key_symbol]:
-                key.new_event(key_symbol in MODS, value)
-            keyboard_event.set()
-
-    async def loop(
-        self,
-        socket_path: Path,
-        keyboard_layout: list[str],
-        priority: str,
-    ) -> None:
-        self.priority = priority
-        for index, key_symbols in enumerate(keyboard_layout):
-            for key_symbol in [value.upper() for value in key_symbols.split()]:
-                if key_symbol == "UNSET":
-                    continue
-                self.key_mappings.setdefault(key_symbol, []).append(self.keys[index])
-
-        logger.info("Keyboard.loop(): Started with socket '%s'.", socket_path)
-        skip = True
-        while True:
-            if not skip:
-                await self.send_message(
-                    socket_path=socket_path,
-                    message=self.next_message(),
-                )
-                self.update_key_colors()
-
-            if skip:
-                skip = False
-                await keyboard_event.wait()
-                keyboard_event.clear()
-            else:
-                try:
-                    await asyncio.wait_for(
-                        keyboard_event.wait(),
-                        timeout=FRAME_TIME,
-                    )
-                    keyboard_event.clear()
-                except TimeoutError:
-                    if all(
-                        (
-                            key.colors_from is colors_depressed
-                            or key.colors_from is colors_depressed_mods
-                        )
-                        and key.state == IDLE_STATE
-                        for key in self.keys
-                    ):
-                        skip = True
-
-    def next_message(self) -> list[str]:
-        colors = " ".join(
-            [
-                f"#{key.color[0]:02X}{key.color[1]:02X}{key.color[2]:02X}"
-                for key in self.keys
-            ],
-        )
-
-        return [
-            "action=add_movie name=keyboard create_frames=true times=1.5 pixels=",
-            colors,
-            "end=true",
-            f"action=play_movie name=keyboard priority={self.priority}",
-            "end=true",
-        ]
-
-    async def send_message(
-        self,
-        socket_path: Path,
-        message: list[str],
-    ) -> None:
-        """Send messages to the server through socket."""
-        if not self.reader or not self.writer:
-            logger.info("Open socket connection.")
-            self.reader, self.writer = await asyncio.open_unix_connection(socket_path)
-
-        for query_line in message:
-            query_line_bytes = (query_line + "\n").encode("utf-8")
-            self.writer.write(query_line_bytes)
-            await self.writer.drain()  # let asyncio flush buffer
-            if query_line == "end=true":
-                response_lines: list[str] = []
-                while True:
-                    response_line_bytes = await self.reader.readline()
-                    response_line = response_line_bytes.decode("utf-8").strip()
-                    if response_line == "END":
-                        break
-                    response_line = response_line_bytes.decode("utf-8")
-                    response_lines.append(response_line)
-
-
-keyboard = Keyboard()
-
-
-async def read_input_events(device: Path) -> None:
-    logger.info("read_input_events(): Started.")
-    process = await asyncio.create_subprocess_exec(
-        "evtest",
-        device,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-    )
-
-    while True:
-        line = await process.stdout.readline()  # type:ignore[union-attr]
-        if process.returncode is not None:
-            print(f"Evtest command ended with return code {process.returncode}.")
-
-        if not line:
-            sys.exit(1)
-
-        line = line.decode("utf-8").strip()
-        if match := re.match(
-            r"^Event:.*, type 1 \(EV_KEY\).*\(KEY_([A-Z0-9]+)\), value ([012])$",
-            line,
-        ):
-            key, value = match.groups()
-            if value != 2:  # noqa: PLR2004
-                print(4)
-                keyboard.new_event(key, int(value))
-        elif line == "evtest: Permission denied":
-            print(line)
-
-    # Wait for exit code
-    await process.wait()
-
-
-async def event_loop(
-    socket_path: Path,
-    device: Path,
-    keyboard_layout: list[str],
-    priority: str,
-) -> None:
-    """Start main event loop."""
-    logger.info("Gathering tasks.")
-    with contextlib.suppress(SystemExit):
-        await asyncio.gather(
-            read_input_events(device),
-            keyboard.loop(socket_path, keyboard_layout, priority),
-        )
-
-
-def main(
-    socket_path: Path,
-    keyboard_device: Path,
-    keyboard_layout: list[str],
-    priority: str,
-) -> None:
-    keyboard_device = keyboard_device or get_keyboard_device()
-    logger.info("Reading keyboard events from device '%s'.", keyboard_device)
-    asyncio.run(
-        main=event_loop(
-            socket_path=socket_path,
-            device=keyboard_device,
-            keyboard_layout=keyboard_layout,
-            priority=priority,
-        ),
-    )

@@ -2,7 +2,23 @@
 
 Keyboard led utilities for MNT Pocket Reform computer.
 
+This utility is meant to be as a tool for easily generate, enqueue, play and manipulate
+small movies/frames on the keyboard leds, either as background loops, or informative
+data.
+
+## Show me the code
+
+Oneshot mode with keypresses and battery clients and matrix rain movie on background:
+
+- `mleds oneshot "action=play_movie name=startup1 priority=urgent end=true action=play_movie name=matrix priority=background end=true action=run_client name=keypresses end=true action=run_client name=battery end=true"`
+
+List available movies on oneshot mode:
+
+- `mleds oneshot "action=status end=true`
+
 ## Concepts
+
+### Server
 
 The server has three movie queues:
 
@@ -13,6 +29,15 @@ The server has three movie queues:
 All movies put into _urgent_ queue are played serially one after another, in the order
 these have been enqueued. Once a movie in this queue has ended it is removed.
 When there are no more _urgent_ movies, then the _background_ movie is played, in loop.
+
+A unix socket file is created where commands can be sent. This allows modifying the
+server behaviour like add, start or stop playing movies, start or stop embedded clients
+
+This program has two embedded clients, keypresses and battery. These behave like an
+scripted external client would do, creating frames on the go and playing them, except
+that bypasses the need to open the socket file.
+
+### Movie
 
 A movie in _background_ (if any) plays in loop, forever. If _urgent_ or _foreground_
 movies are enqueued, once they end, the _background_ movie will resume where it was left.
@@ -34,7 +59,8 @@ have set.
 - set_intensity: global server modifier that affects brightness.
 - list_movies: show all the loaded movies on the server.
 - list_scripts: show all available scripts on the server.
-- run_script: run a named sript.
+- run_script: run a named script.
+- run_client: run a named client.
 
 Commands are read by:
 
@@ -61,7 +87,7 @@ couple of example script clients.
   string or reading from stdin. Does not read _load.d_ neither _scripts.d_ folders.
 - `mleds keypresses`: client for the server that shows keyboard keypresses. By default
   it plays on _foreground_ queue.
-- `mleds list_movies|play_movie|list_scripts|run_script|set_intensity` shortcuts to
+- `mleds run_script|run_client|stop_client|set_intensity` shortcuts to
   sending these commands with the `mleds client "action=<my_action> ... end=true"`.
 - `mleds path hidraw|keyboard|socket`: show internal used paths used with the current
   configuration.
@@ -92,8 +118,6 @@ mkdir "${HOME}/.config/mleds"
 cp -a etc/* "${HOME}/.config/mleds"
 ```
 
-To use the _keypresses_ client, install evtest `sudo apt install evtest`.
-
 ## FAQ
 
 **How do I load the samples on the _sample_ folder?**
@@ -114,6 +138,13 @@ or a bunch of them with
 
 they are just a bunch of commands, one after the other inside the files.
 
+The server has embedded a list of movies. A hardcoded one is the _blank_ movie
+which consists of a blank frame with infinite timeout. It can be used for stopping the
+current background movie, or for creating new movies. Moreover a list of text files are
+embedded and loaded by the server, and are mostly useful if you are not copying the
+sample files to your configuration folder, for example, when using the program in
+oneshot mode.
+
 **Why this format? Why can'it I throw code at it?**
 
 I want it to be simple text file easily readable and writable, no coding at all. But
@@ -122,20 +153,8 @@ any suggestion is welcomed.
 The most advanced primitive you will find is the `rectangle` one, available on the
 _add_movie_ command.
 
-## TODO
+**How does the keypresses client know what keys are being pressed?**
+The keypresses client reads the device under /dev/input directly.
 
-- Client to notify about battery status.
-- Keypresses client should be controlled with a command like _play_movie_, later when a
-  play_movie is run with the same "foreground" or "background" priority, keypresses
-  module should be stopped (scheduler). This solves two problems:
-  - having to run _mleds keypresses_ as a separate long running command.
-  - the need for the user running _mleds keypresses_ to have read access to the keyboard device (if the server is already running under root).
-- Add the concept of "loop starting point" to a movie, and when movie is played in
-  background priority (which always loops) restart the movie on this specified frame
-  instead of the first one. This allows movies to have an grup of frames that start the
-  movie, which won't play lately on the loop.
-- More configurable options for keypresses colors and times.
-- add to configuration the following keys:
-  - "startup_movie_background"
-  - "startup_movie_foreground"
-  - "startup_movies_urgent"
+For its purposes it only mantains, at any given time, a list of keys that are currently
+pressed, but it does not have memory for the previous states.

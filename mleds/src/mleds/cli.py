@@ -15,8 +15,6 @@
 
 import argparse
 import asyncio
-import builtins
-import contextlib
 import logging
 import os
 import sys
@@ -56,11 +54,9 @@ def parse_args() -> argparse.Namespace:
         "Run raw commands directly without a running server. "
         "Use single dash '-' to read from stdin."
     )
-    keypresses_command_help = (
-        "Run a client that reads keyboard events and show their activity."
-    )
-    list_movies_command_help = "List currently loded movies on the server."
-    list_scripts_command_help = "List currently available scripts on the server."
+    status_command_help = "Show current server status."
+    run_client_command_help = "Start an embedded client."
+    stop_client_command_help = "Stop an embedded client."
     run_script_command_help = "Run a named script on the server."
     set_intensity_command_help = (
         "Sets the server brightness intensity, affects everything playing. "
@@ -76,36 +72,40 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("-k", "--keyboard-device", required=False, type=Path)
     parser.add_argument("-d", "--hidraw-device", required=False, type=Path)
     subparser = parser.add_subparsers(dest="mode", required=True)
+
     _parser_server = subparser.add_parser("server", help=server_command_help)
     parser_client = subparser.add_parser("client", help=client_command_help)
+    parser_client.add_argument("message")
     parser_oneshot = subparser.add_parser("oneshot", help=oneshot_command_help)
-    _parser_keypresses = subparser.add_parser(
-        "keypresses",
-        help=keypresses_command_help,
+    parser_oneshot.add_argument("message")
+    _parser_status = subparser.add_parser(
+        "status",
+        help=status_command_help,
     )
-    _parser_list_movies = subparser.add_parser(
-        "list_movies",
-        help=list_movies_command_help,
-    )
+
     parser_play_movie = subparser.add_parser(
         "play_movie",
         help=play_movie_command_help,
     )
-    _parser_list_scripts = subparser.add_parser(
-        "list_scripts",
-        help=list_scripts_command_help,
-    )
-    parser_run_script = subparser.add_parser("run_script", help=run_script_command_help)
-    parser_run_script.add_argument("script_name")
     parser_play_movie.add_argument("movie_name")
     parser_play_movie.add_argument("priority")
+    parser_run_client = subparser.add_parser(
+        "run_client",
+        help=run_client_command_help,
+    )
+    parser_run_client.add_argument("name")
+    parser_stop_client = subparser.add_parser(
+        "stop_client",
+        help=stop_client_command_help,
+    )
+    parser_stop_client.add_argument("name")
+    parser_run_script = subparser.add_parser("run_script", help=run_script_command_help)
+    parser_run_script.add_argument("script_name")
     parser_set_intensity = subparser.add_parser(
         "set_intensity",
         help=set_intensity_command_help,
     )
     parser_set_intensity.add_argument("intensity_value")
-    parser_client.add_argument("message")
-    parser_oneshot.add_argument("message")
     parser_show_path = subparser.add_parser(
         "path",
         help=show_path_command_help,
@@ -176,19 +176,24 @@ def main() -> None:  # noqa: C901, PLR0912
                     socket_path=configuration.socket_path,
                 ),
             )
-    elif args.mode == "list_movies":
-        check_path_exists(configuration.socket_path)
+    elif args.mode == "status":
         asyncio.run(
             messages_client(
-                message="action=list_movies end=true",
+                message="action=status end=true",
                 socket_path=configuration.socket_path,
             ),
         )
-    elif args.mode == "list_scripts":
-        check_path_exists(configuration.socket_path)
+    elif args.mode == "run_client":
         asyncio.run(
             messages_client(
-                message="action=list_scripts end=true",
+                message=f"action=run_client name={args.name} end=true",
+                socket_path=configuration.socket_path,
+            ),
+        )
+    elif args.mode == "stop_client":
+        asyncio.run(
+            messages_client(
+                message=f"action=stop_client name={args.name} end=true",
                 socket_path=configuration.socket_path,
             ),
         )
@@ -219,25 +224,6 @@ def main() -> None:  # noqa: C901, PLR0912
                 socket_path=configuration.socket_path,
             ),
         )
-    elif args.mode == "keypresses":
-        check_path_exists(configuration.socket_path)
-        check_path_writable(configuration.socket_path)
-        check_path_exists(configuration.keyboard_device)
-        check_path_writable(configuration.hidraw_device)
-        from mleds.clients.keypresses import main as keypresses  # noqa: PLC0415
-
-        keypresses(
-            socket_path=configuration.socket_path,
-            keyboard_device=configuration.keyboard_device,
-            keyboard_layout=configuration.keypresses_keyboard_layout,
-            priority=configuration.keypresses_priority,
-        )
-    elif args.mode == "show_hidraw":
-        print(configuration.hidraw_device)
-    elif args.mode == "show_keyboard":
-        print(configuration.keyboard_device)
-    elif args.mode == "show_socket":
-        print(configuration.socket_path)
     elif args.mode == "path":
         if args.name == "hidraw":
             print(configuration.hidraw_device)
@@ -295,7 +281,10 @@ async def server_event_loop(configuration: Configuration) -> None:
     await asyncio.gather(
         # task_server_writer,
         shared["server_instance"].writer(),
-        shared["server_instance"].async_init(),
+        shared["server_instance"].async_init(
+            include_loads=True,
+            include_resources=True,
+        ),
         task_messages_server.serve_forever(),
     )
 
@@ -303,11 +292,15 @@ async def server_event_loop(configuration: Configuration) -> None:
 async def oneshot_event_loop(configuration: Configuration, message: str) -> None:
     """Run a server with user supplied configuration and exit."""
     shared["server_instance"] = Server(configuration=configuration, oneshot=True)
-    with contextlib.suppress(builtins.BaseException):
-        await asyncio.gather(
-            shared["server_instance"].writer(),
-            oneshot(message),
-        )
+    await asyncio.gather(
+        asyncio.sleep(1),
+        shared["server_instance"].writer(),
+        shared["server_instance"].async_init(
+            include_loads=False,
+            include_resources=True,
+        ),
+        oneshot(message),
+    )
 
 
 if __name__ == "__main__":

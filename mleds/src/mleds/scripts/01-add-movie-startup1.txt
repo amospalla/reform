@@ -1,0 +1,90 @@
+action=add_movie
+name=startup1
+copy_movie=blank
+times=0.03
+end=true
+
+action=add_movie
+name=startup1
+copy_movie=startup1
+copy_movie=blank
+times=0.03
+end=true
+
+action=add_movie
+name=startup1
+copy_movie=startup1
+copy_movie=blank
+times=0.03
+rectangle=0 0 12 5 #002200 #002200 up false 20
+end=true
+
+action=add_movie
+name=startup1
+copy_movie=startup1
+copy_movie=blank
+times=0.03
+rectangle=0 0 12 5 #002200 #002200 up false 40
+end=true
+
+action=add_movie
+name=startup1
+copy_movie=startup1
+copy_movie=blank
+times=0.03
+rectangle=0 0 12 5 #002200 #002200 up false 60
+end=true
+
+action=add_movie
+name=startup1
+copy_movie=startup1
+copy_movie=blank
+times=0.03
+rectangle=0 0 12 5 #002200 #002200 up false 80
+end=true
+
+action=add_movie
+name=startup1
+copy_movie=startup1
+copy_movie=blank
+times=0.03
+rectangle=0 0 12 5 #002200 #002200 up false 100
+end=true
+
+action=add_movie
+name=startup1
+copy_movie=startup1
+copy_movie=blank
+times=0.03
+rectangle=0 0 12 5 #002200 #002200 down false 80
+end=true
+
+action=add_movie
+name=startup1
+copy_movie=startup1
+copy_movie=blank
+times=0.03
+rectangle=0 0 12 5 #002200 #002200 down false 60
+end=true
+
+action=add_movie
+name=startup1
+copy_movie=startup1
+copy_movie=blank
+times=0.03
+rectangle=0 0 12 5 #002200 #002200 down false 40
+end=true
+
+action=add_movie
+name=startup1
+copy_movie=startup1
+copy_movie=blank
+times=0.03
+rectangle=0 0 12 5 #002200 #002200 down false 20
+end=true
+
+action=add_movie
+name=startup1
+copy_movie=startup1
+back_and_forth=true
+end=true

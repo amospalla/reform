@@ -17,8 +17,12 @@ import asyncio
 import dataclasses
 import logging
 import re
+from collections.abc import Awaitable
+from importlib import resources
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, TypedDict
 
+from mleds.clients import all_clients
 from mleds.configuration import Configuration
 from mleds.constants import (
     COLOR_BLACK,
@@ -35,10 +39,20 @@ from mleds.movie import (
     priority_t,
 )
 
+if TYPE_CHECKING:
+    from mleds.clients.base import Client
+
+
+class ClientItem(TypedDict):
+    klass: "type[Client]"
+    task: Awaitable[Any] | None
+
+
 message_t = list[tuple[str, str]]
 
 writer_event = asyncio.Event()
 scheduler_lock = asyncio.Lock()
+process_messages_lock = asyncio.Lock()
 logger = logging.getLogger(__name__)
 
 
@@ -146,6 +160,10 @@ class Server:
             ),
         )
         self.movies: dict[str, Movie] = {"blank": blank_movie}
+        self.clients = {
+            name: ClientItem(klass=client, task=None)
+            for name, client in all_clients.items()
+        }
         self.hidraw_device = configuration.hidraw_device
         self.slot = PlayingSlots()
         # In oneshot mode server exits when the playing movie ends.
@@ -154,22 +172,40 @@ class Server:
         self.intensity = 1.0
         self.loads_path = configuration.loads_path
         self.scripts_paths = configuration.scripts_paths
+        self.configuration = configuration
 
     def get_messages_reader(self) -> MessagesBuffer:
         return MessagesBuffer(self)
 
-    async def async_init(self) -> None:
-        for file in sorted(
-            file
-            for path in self.loads_path
-            for file in path.glob("*")
-            if file.is_file()
-        ):
-            logger.info("async_init(): loading command file %s.", file)
-            messages_reader = self.get_messages_reader()
-            with file.open("r") as f:
-                for line in f.readlines():
-                    _response_lines, _disconnect = await messages_reader.add(line)
+    async def async_init(
+        self,
+        include_loads: bool,
+        include_resources: bool,
+    ) -> None:
+        if include_loads:
+            for load_file in sorted(
+                file
+                for path in self.loads_path
+                for file in path.glob("*")
+                if file.is_file()
+            ):
+                logger.info("async_init(): loading command file %s.", load_file)
+                messages_reader = self.get_messages_reader()
+                with load_file.open("r") as f:
+                    for line in f.readlines():
+                        _response_lines, _disconnect = await messages_reader.add(line)
+
+        if include_resources:
+            for resource_file in (
+                file
+                for file in resources.files("mleds.scripts").iterdir()
+                if file.is_file()
+            ):
+                logger.info("async_init(): loading embedded file %s.", resource_file)
+                messages_reader = self.get_messages_reader()
+                with resource_file.open("r") as f:
+                    for line in f.readlines():
+                        _response_lines, _disconnect = await messages_reader.add(line)
 
     async def add_movie(self, message: message_t) -> str:  # noqa: C901, PLR0912, PLR0915
         """Add a movie to the list of available movies."""
@@ -379,7 +415,7 @@ class Server:
                     )
                     writer_event.set()
 
-    async def receive_message(self, message: message_t) -> tuple[list[str], bool]:  # noqa: C901
+    async def receive_message(self, message: message_t) -> tuple[list[str], bool]:  # noqa: C901, PLR0912
         """Read message lines and run them."""
         disconnect = False
 
@@ -387,12 +423,14 @@ class Server:
         action = message[0][1]
 
         match action:
+            case "run_client":
+                response = await self.run_client(message)
+            case "stop_client":
+                response = await self.stop_client(message)
             case "run_script":
                 response = await self.run_script_file(message)
-            case "list_scripts":
-                response = await self.list_scripts()
-            case "list_movies":
-                response = list(self.movies.keys())
+            case "status":
+                response = await self.get_status(message)
             case "add_movie":
                 response = [await self.add_movie(message)]
             case "play_movie":
@@ -420,6 +458,49 @@ class Server:
                 raise InvalidConfigurationError(f"invalid action '{message[0][1]}'")
         return response, disconnect
 
+    async def get_status(self, message: message_t) -> list[str]:
+        for key, _value in message:
+            match key:
+                case "action":
+                    pass
+                case _:
+                    raise InvalidConfigurationError(
+                        f"unknown parameter for action 'status': '{key}'",
+                    )
+
+        response: list[str] = []
+        response.extend([f"available_movie: {movie}" for movie in self.movies])
+        response.extend([f"available_client: {client}" for client in self.clients])
+        if not self.oneshot:
+            response.extend(
+                [f"available_script: {script}" for script in await self.list_scripts()],
+            )
+        if self.slot.background:
+            playing_background = self.slot.background.movie.name
+        else:
+            playing_background = "none"
+        response.append(f"playing_background_movie: {playing_background}")
+        if self.slot.foreground:
+            playing_foreground = self.slot.foreground.movie.name
+        else:
+            playing_foreground = "none"
+        response.append(f"playing_foreground_movie: {playing_foreground}")
+        if self.slot.urgents:
+            playing_urgents = " ".join(
+                [playing.movie.name for playing in self.slot.urgents],
+            )
+        else:
+            playing_urgents = "none"
+        response.append(f"playing_urgent_movies: {playing_urgents}")
+        response.extend(
+            [
+                f"running_client: {name}"
+                for name, value in self.clients.items()
+                if value["task"]
+            ],
+        )
+        return response
+
     async def list_scripts(self) -> list[str]:
         return [
             file.name
@@ -427,6 +508,69 @@ class Server:
             for file in path.glob("*")
             if file.is_file()
         ]
+
+    async def run_client(self, message: message_t) -> list[str]:
+        for key, value in message:
+            match key:
+                case "action":
+                    pass
+                case "name":
+                    name = value
+                case _:
+                    raise InvalidConfigurationError(
+                        f"unknown parameter for action 'load': '{key}'",
+                    )
+
+        if not name:
+            raise InvalidConfigurationError(
+                "Command 'run_client' needs a client name.",
+            )
+        if name not in self.clients:
+            raise InvalidConfigurationError(
+                "Command 'run_client' invalid client name.",
+            )
+        if self.clients[name]["task"] is not None:
+            raise InvalidConfigurationError(
+                "Command 'run_client' client is already running.",
+            )
+
+        client_class = self.clients[name]["klass"]
+        instance = client_class(server=self, configuration=self.configuration)
+        self.clients[name]["task"] = asyncio.create_task(
+            instance.start(self.clients[name]),
+        )
+        self.clients[name]["task"]
+
+        return ["ok"]
+
+    async def stop_client(self, message: message_t) -> list[str]:
+        for key, value in message:
+            match key:
+                case "action":
+                    pass
+                case "name":
+                    name = value
+                case _:
+                    raise InvalidConfigurationError(
+                        f"unknown parameter for action 'load': '{key}'",
+                    )
+
+        if not name:
+            raise InvalidConfigurationError(
+                "Command 'run_client' needs a client name.",
+            )
+        if name not in self.clients:
+            raise InvalidConfigurationError(
+                "Command 'run_client' invalid client name.",
+            )
+        if not (task := self.clients[name]["task"]):
+            raise InvalidConfigurationError(
+                f"Command 'run_client' client '{name}' is not running.",
+            )
+        task.cancel()  # type:ignore[attr-defined]
+        self.clients[name]["task"] = None
+
+        return ["ok"]
 
     async def run_script_file(self, message: message_t) -> list[str]:
         filename = ""

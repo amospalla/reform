@@ -175,9 +175,8 @@ class Movie:
             # Fix: mouse buttons do not alineate with matrix position.
             # On last row, right pointer buttons are read from columns number 10 and 11,
             # but visually these rows are 8 and 9.
-            frame.pixels[KEYBOARD_ROWS - 1][27:36] = frame.pixels[KEYBOARD_ROWS - 1][
-                21:30
-            ]
+
+            frame.pixels[KEYBOARD_ROWS - 1][9:12] = frame.pixels[KEYBOARD_ROWS - 1][7:9]
             if submovie.rectangles:
                 self.add_rectangles(submovie.rectangles, frame)
             frames.append(frame)

@@ -122,6 +122,11 @@ class Configuration:
     socket_user: int
     socket_group: int
     socket_mode: int
+    battery_border_color = "#3d1986"
+    battery_charge_color_start = "#206000"
+    battery_charge_color_end = "#00a000"
+    battery_charging_color = "#00f000"
+    battery_discharging_color = "#800000"
 
 
 def configuration_dir_paths() -> list[Path]:
@@ -187,7 +192,16 @@ def get_configuration(  # noqa: C901, PLR0912
         with config_file.open("rb") as f:
             data = tomllib.load(f)
             # Make Path from str
-            for path in ("keyboard_device", "hidraw_device", "socket_device"):
+            for path in (
+                "keyboard_device",
+                "hidraw_device",
+                "socket_device",
+                "battery_border_color",
+                "battery_charge_color_start",
+                "battery_charge_color_end",
+                "battery_charging_color",
+                "battery_discharging_color",
+            ):
                 if path in data:
                     data[path] = Path(data[path])
             if "socket_path" in data:

@@ -100,3 +100,9 @@
 #     "unset",
 #     "unset",
 # ]
+
+# battery_border_color = "#03d1986"
+# battery_charge_color_start = "#206000"
+# battery_charge_color_end = "#00a000"
+# battery_charging_color = "#00f000"
+# battery_discharging_color = "#800000"
