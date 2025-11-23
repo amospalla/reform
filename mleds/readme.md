@@ -18,7 +18,9 @@ sudo ./mleds oneshot "action=play_movie name=startup1 priority=urgent end=true a
 
 Same oneshot as above, but with lowered brightness:
 
-`./mleds oneshot "action=set_intensity intensity=0.3 end=true action=play_movie name=startup1 priority=urgent end=true action=play_movie name=matrix priority=background end=true action=run_client name=keypresses end=true action=run_client name=battery end=true"`
+```sh
+sudo ./mleds oneshot "action=set_intensity intensity=0.3 end=true action=play_movie name=startup1 priority=urgent end=true action=play_movie name=matrix priority=background end=true action=run_client name=keypresses end=true action=run_client name=battery end=true"
+```
 
 Play some demos:
 
@@ -30,7 +32,9 @@ sudo ./mleds oneshot "action=play_movie name=background3 priority=background end
 
 List available movies on oneshot mode:
 
-- `./mleds oneshot "action=status end=true`
+```sh
+./mleds oneshot "action=status end=true"
+```
 
 ## Concepts
 
