@@ -26,6 +26,7 @@ from mleds.clients import all_clients
 from mleds.configuration import Configuration
 from mleds.constants import (
     COLOR_BLACK,
+    KEYBOARD_ROWS,
     PIXELS_PER_FRAME,
     TIMEOUT_DISABLE,
 )
@@ -68,6 +69,11 @@ def send_frame_to_keyboard(hidraw: Path, frame: frame_data_t) -> None:
             row_colors: list[int] = []
             for rgb in line:
                 row_colors.extend(rgb)
+            if index == KEYBOARD_ROWS - 1:
+                # Fix: mouse buttons do not alineate with matrix position.
+                # On last row, right pointer buttons are read from columns number 10 and
+                # 11, but visually these rows are 8 and 9.
+                row_colors[27:36] = row_colors[21:27]
             k.write(b"xXRGB" + bytes([index, *row_colors]))
 
 
