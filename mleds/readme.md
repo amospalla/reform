@@ -13,7 +13,7 @@ Oneshot mode with keypresses and battery clients and matrix rain movie on backgr
 ```sh
 wget -O mleds https://github.com/amospalla/reform/raw/refs/heads/main/mleds/mleds
 chmod 0755 mleds
-./mleds oneshot "action=play_movie name=startup1 priority=urgent end=true action=play_movie name=matrix priority=background end=true action=run_client name=keypresses end=true action=run_client name=battery end=true"
+sudo ./mleds oneshot "action=play_movie name=startup1 priority=urgent end=true action=play_movie name=matrix priority=background end=true action=run_client name=keypresses end=true action=run_client name=battery end=true"
 ```
 
 Same oneshot as above, but with lowered brightness:
@@ -23,9 +23,9 @@ Same oneshot as above, but with lowered brightness:
 Play some demos:
 
 ```sh
-./mleds oneshot "action=play_movie name=background1 priority=background end=true"
-./mleds oneshot "action=play_movie name=background2 priority=background end=true"
-./mleds oneshot "action=play_movie name=background3 priority=background end=true"
+sudo ./mleds oneshot "action=play_movie name=background1 priority=background end=true"
+sudo ./mleds oneshot "action=play_movie name=background2 priority=background end=true"
+sudo ./mleds oneshot "action=play_movie name=background3 priority=background end=true"
 ```
 
 List available movies on oneshot mode:
