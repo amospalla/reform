@@ -101,8 +101,22 @@
 #     "unset",
 # ]
 
-# battery_border_color = "#03d1986"
-# battery_charge_color_start = "#206000"
-# battery_charge_color_end = "#00a000"
-# battery_charging_color = "#00f000"
-# battery_discharging_color = "#800000"
+# battery_border_color = "#3d1986"
+# battery_increase_color_start = "#206000"
+# battery_increase_color_end = "#00a000"
+# battery_decrease_color_start = "#303000"
+# battery_decrease_color_end = "#806000"
+# battery_charging_color = "#008000"
+# battery_discharging_color = "#380000"
+# battery_notification_events = [
+#     # Up
+#     "33 34",
+#     "50 51",
+#     "70 71",
+#     "84 85",
+#     # Down
+#     "66 65",
+#     "33 32",
+#     "16 15",
+#     "6 5",
+# ]

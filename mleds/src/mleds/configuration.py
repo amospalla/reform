@@ -110,6 +110,29 @@ def default_keypresses_keyboard_layout() -> list[str]:
     ]
 
 
+default_battery_configuration = {
+    "battery_border_color": "#3d1986",
+    "battery_increase_color_start": "#206000",
+    "battery_increase_color_end": "#00a000",
+    "battery_decrease_color_start": "#303000",
+    "battery_decrease_color_end": "#806000",
+    "battery_charging_color": "#008000",
+    "battery_discharging_color": "#380000",
+    "battery_notification_events": [
+        # Up
+        "33 34",
+        "50 51",
+        "70 71",
+        "84 85",
+        # Down
+        "66 65",
+        "33 32",
+        "16 15",
+        "6 5",
+    ],
+}
+
+
 @dataclasses.dataclass
 class Configuration:
     keyboard_device: Path
@@ -122,11 +145,14 @@ class Configuration:
     socket_user: int
     socket_group: int
     socket_mode: int
-    battery_border_color = "#3d1986"
-    battery_charge_color_start = "#206000"
-    battery_charge_color_end = "#00a000"
-    battery_charging_color = "#00f000"
-    battery_discharging_color = "#800000"
+    battery_border_color: str
+    battery_increase_color_start: str
+    battery_increase_color_end: str
+    battery_decrease_color_start: str
+    battery_decrease_color_end: str
+    battery_charging_color: str
+    battery_discharging_color: str
+    battery_notification_events: list[tuple[int, int]]
 
 
 def configuration_dir_paths() -> list[Path]:
@@ -196,11 +222,6 @@ def get_configuration(  # noqa: C901, PLR0912
                 "keyboard_device",
                 "hidraw_device",
                 "socket_device",
-                "battery_border_color",
-                "battery_charge_color_start",
-                "battery_charge_color_end",
-                "battery_charging_color",
-                "battery_discharging_color",
             ):
                 if path in data:
                     data[path] = Path(data[path])
@@ -208,6 +229,15 @@ def get_configuration(  # noqa: C901, PLR0912
                 data["socket_path"] = Path(data["socket_path"])
     else:
         data = {}
+
+    for k, v in default_battery_configuration.items():
+        if k not in data:
+            data[k] = v
+
+    data["battery_notification_events"] = [
+        (int(event.split()[0]), int(event.split()[1]))
+        for event in data["battery_notification_events"]
+    ]
 
     logger.debug("Configuration data loaded from file: '%s'.", data)
 
@@ -266,6 +296,14 @@ def get_configuration(  # noqa: C901, PLR0912
         socket_user=uid,
         socket_group=gid,
         socket_mode=socket_mode,
+        battery_border_color=data["battery_border_color"],
+        battery_increase_color_start=data["battery_increase_color_start"],
+        battery_increase_color_end=data["battery_increase_color_end"],
+        battery_decrease_color_start=data["battery_decrease_color_start"],
+        battery_decrease_color_end=data["battery_decrease_color_end"],
+        battery_charging_color=data["battery_charging_color"],
+        battery_discharging_color=data["battery_discharging_color"],
+        battery_notification_events=data["battery_notification_events"],
     )
 
     logger.info("[Configuration] %s.", configuration)

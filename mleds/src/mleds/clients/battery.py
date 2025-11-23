@@ -21,19 +21,6 @@ from mleds.clients.base import Client
 
 logger = logging.getLogger(__name__)
 
-triggers = {
-    # (4, 5),
-    # (95, 96),
-    (66, 65),
-    (33, 32),
-    (16, 35),
-    (6, 5),
-    (33, 34),
-    (50, 51),
-    (70, 71),
-    (84, 85),
-}
-
 
 class Battery(Client):
     def __init__(self, *args, **kwargs) -> None:  # type:ignore[no-untyped-def]
@@ -43,13 +30,17 @@ class Battery(Client):
 
     async def run(self) -> None:
         while True:
-            await asyncio.sleep(0.1)
             new_percentage, self.charging = self.get_data()
-            if (self.percentage, new_percentage) in triggers:
-                await self.send_message(message=self.next_message())
+            if (
+                self.percentage,
+                new_percentage,
+            ) in self.configuration.battery_notification_events:
+                await self.send_message(
+                    message=self.next_message(new_percentage - self.percentage),
+                )
             self.percentage = new_percentage
 
-            await asyncio.sleep(1)
+            await asyncio.sleep(10)
 
     def get_data(self) -> tuple[int, bool]:
         with Path("/sys/class/power_supply/BAT0/capacity").open("r") as f:
@@ -58,24 +49,32 @@ class Battery(Client):
             charging = f.read().strip() == "Charging"
         return percentage, charging
 
-    def next_message(self) -> list[str]:
+    def next_message(self, increment: int) -> list[str]:
         if self.charging:
             charging_color = self.configuration.battery_charging_color
         else:
             charging_color = self.configuration.battery_discharging_color
         times = 0.4
-        return [
+        if increment > 0:
+            start_color = self.configuration.battery_increase_color_start
+            end_color = self.configuration.battery_increase_color_end
+        else:
+            start_color = self.configuration.battery_decrease_color_start
+            end_color = self.configuration.battery_decrease_color_end
+        frame0 = [
             f"action=add_movie name=battery0 copy_movie=blank times={times}",
             f"rectangle= 0 0 10 5 {self.configuration.battery_border_color}",
             f"{self.configuration.battery_border_color} right false 100",
             f"rectangle=10 1  2 3 {self.configuration.battery_border_color}",
             f"{self.configuration.battery_border_color} right false 100",
             "rectangle=  8 1  2 3 #000000 #000000 right false 100",
-            f"rectangle= 1 1  9 3 {self.configuration.battery_charge_color_start}",
-            f"{self.configuration.battery_charge_color_end}",
+            f"rectangle= 1 1  9 3 {start_color} {end_color}",
             f"right true {self.percentage}",
-            f"rectangle= 0 5  1 1 {charging_color} {charging_color} right true 100",
+            f"rectangle= 3 5  2 1 {charging_color} {charging_color} right true 100",
+            f"rectangle= 7 5  2 1 {charging_color} {charging_color} right true 100",
             "end=true",
+        ]
+        frame1 = [
             # Same frame as before, with {percentage-11}
             f"action=add_movie name=battery1 copy_movie=blank times={times}",
             f"rectangle= 0 0 10 5 {self.configuration.battery_border_color}",
@@ -83,29 +82,19 @@ class Battery(Client):
             f"rectangle=10 1  2 3 {self.configuration.battery_border_color}",
             f"{self.configuration.battery_border_color} right false 100",
             "rectangle=  8 1  2 3 #000000 #000000 right false 100",
-            f"rectangle= 1 1  9 3 {self.configuration.battery_charge_color_start}",
-            f"{self.configuration.battery_charge_color_end} right true",
+            f"rectangle= 1 1  9 3 {start_color} {end_color} right true",
             f"{self.percentage - 11}",
-            f"rectangle= 0 5  1 1 {charging_color} {charging_color} right true 100",
-            "end=true",
-            "action=play_movie name=battery0 priority=urgent",
-            "end=true",
-            "action=play_movie name=battery1 priority=urgent",
-            "end=true",
-            "action=play_movie name=battery0 priority=urgent",
-            "end=true",
-            "action=play_movie name=battery1 priority=urgent",
-            "end=true",
-            "action=play_movie name=battery0 priority=urgent",
-            "end=true",
-            "action=play_movie name=battery1 priority=urgent",
-            "end=true",
-            "action=play_movie name=battery0 priority=urgent",
-            "end=true",
-            "action=play_movie name=battery1 priority=urgent",
-            "end=true",
-            "action=play_movie name=battery0 priority=urgent",
-            "end=true",
-            "action=play_movie name=battery1 priority=urgent",
+            f"rectangle= 3 5  2 1 {charging_color} {charging_color} right true 100",
+            f"rectangle= 7 5  2 1 {charging_color} {charging_color} right true 100",
             "end=true",
         ]
+        create_movie = [
+            "action=add_movie name=battery",
+            "copy_movie=battery0 times=0.4",
+            "copy_movie=battery1 times=0.4",
+            "end=true",
+            "action=add_movie name=battery",
+            "copy_movie=battery repetitions=3 end=true",
+            "action=play_movie name=battery priority=urgent end=true,",
+        ]
+        return [*frame0, *frame1, *create_movie]
