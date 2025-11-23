@@ -16,6 +16,18 @@ chmod 0755 mleds
 ./mleds oneshot "action=play_movie name=startup1 priority=urgent end=true action=play_movie name=matrix priority=background end=true action=run_client name=keypresses end=true action=run_client name=battery end=true"
 ```
 
+Same oneshot as above, but with lowered brightness:
+
+`./mleds oneshot "action=set_intensity intensity=0.3 end=true action=play_movie name=startup1 priority=urgent end=true action=play_movie name=matrix priority=background end=true action=run_client name=keypresses end=true action=run_client name=battery end=true"`
+
+Play some demos:
+
+```sh
+./mleds oneshot "action=play_movie name=background1 priority=background end=true"
+./mleds oneshot "action=play_movie name=background2 priority=background end=true"
+./mleds oneshot "action=play_movie name=background3 priority=background end=true"
+```
+
 List available movies on oneshot mode:
 
 - `./mleds oneshot "action=status end=true`
