@@ -172,6 +172,7 @@ class Server:
         }
         self.hidraw_device = configuration.hidraw_device
         self.slot = PlayingSlots()
+        self.slot.background = PlayingMovie(movie=blank_movie, priority="background")
         # In oneshot mode server exits when the playing movie ends.
         self.oneshot = oneshot
         # Intensity to apply to colors, float >=0.0
