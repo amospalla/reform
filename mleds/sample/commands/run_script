@@ -1,6 +1,9 @@
 // Load a script accesible from the server.
+//
 // These are located either on /etc/mleds/scripts.d or the user under which server is
 // running config location ~/.config/mleds/scripts.d.
+//
+// The list of available scripts can be listed using the "status" command.
 action=run_script
 name=my_script
 end=true

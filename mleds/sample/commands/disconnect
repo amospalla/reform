@@ -1,0 +1,8 @@
+// When a client opens the socket file it can send several commands, and each time
+// the server a "end=true" token, the last command gets processed.
+//
+// This command is mostly useful when writing external clients, and can be used to ask
+// the server to close the unix socket file connection, once the client has ended.
+
+action=disconnect
+end=true

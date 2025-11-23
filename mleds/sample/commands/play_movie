@@ -1,0 +1,10 @@
+// Command to put a movie in a given queue ("background", "foreground" or "urgent").
+//
+// Specifying the priority is optional. It is set to foreground by default.
+//
+// The list of available movies can be listed using the "status" command.
+
+action=play_movie
+name=my_movie
+priority=foreground
+end=true

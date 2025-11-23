@@ -1,6 +1,0 @@
-// The set intensity action sets the server brightness.
-action=set_intensity
-// format: intensity=[+-]<float>
-// examples: absoute number like 0.95 or relative like +0.1 or -0.1
-value=0.1
-end=true

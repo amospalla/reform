@@ -1,3 +1,4 @@
-// dump loaded movies
+// Dump loaded movies.
+
 action=dump_movies
 end=true

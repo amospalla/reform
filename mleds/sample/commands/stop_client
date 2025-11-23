@@ -1,0 +1,7 @@
+// Stop an internal running client.
+//
+// The list of running clients can be listed using the "status" command.
+
+action=stop_client
+name=keypresses
+end=true

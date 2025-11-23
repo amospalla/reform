@@ -1,4 +1,0 @@
-//// The server keeps the connection open until a disconnection is requested.
-
-action=disconnect
-end=true

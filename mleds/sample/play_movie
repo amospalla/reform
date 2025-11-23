@@ -1,6 +1,0 @@
-// Command to put a movie in a given queue ("background", "foreground" or "urgent").
-action=play_movie
-name=my_movie
-// specifying the priority is optional. It is set to foreground by default.
-priority=foreground
-end=true

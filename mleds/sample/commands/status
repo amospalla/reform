@@ -1,0 +1,10 @@
+// Show the current server status, including:
+// - available movies
+// - available scripts
+// - available internal clients
+// - current movie on the background
+// - current movie on the foreground
+// - current movie on the urgent queues
+
+action=status
+end=true

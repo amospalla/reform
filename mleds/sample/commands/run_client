@@ -1,0 +1,7 @@
+// Start an internal client.
+//
+// The list of internal clients can be listed using the "status" command.
+
+action=run_client
+name=keypresses
+end=true
