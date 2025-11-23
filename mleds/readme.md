@@ -10,11 +10,15 @@ data.
 
 Oneshot mode with keypresses and battery clients and matrix rain movie on background:
 
-- `mleds oneshot "action=play_movie name=startup1 priority=urgent end=true action=play_movie name=matrix priority=background end=true action=run_client name=keypresses end=true action=run_client name=battery end=true"`
+```sh
+wget -O mleds https://github.com/amospalla/reform/raw/refs/heads/main/mleds/mleds
+chmod 0755 mleds
+./mleds oneshot "action=play_movie name=startup1 priority=urgent end=true action=play_movie name=matrix priority=background end=true action=run_client name=keypresses end=true action=run_client name=battery end=true"
+```
 
 List available movies on oneshot mode:
 
-- `mleds oneshot "action=status end=true`
+- `./mleds oneshot "action=status end=true`
 
 ## Concepts
 
@@ -154,6 +158,7 @@ The most advanced primitive you will find is the `rectangle` one, available on t
 _add_movie_ command.
 
 **How does the keypresses client know what keys are being pressed?**
+
 The keypresses client reads the device under /dev/input directly.
 
 For its purposes it only mantains, at any given time, a list of keys that are currently
