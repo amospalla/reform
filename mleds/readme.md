@@ -6,6 +6,10 @@ This utility is meant to be as a tool for easily generate, enqueue, play and man
 small movies/frames on the keyboard leds, either as background loops, or informative
 data.
 
+![gif1](https://file.amospalla.es/misc/mleds_sample1.gif)
+![gif2](https://file.amospalla.es/misc/mleds_sample2.gif)
+![gif3](https://file.amospalla.es/misc/mleds_sample3.gif)
+
 ## Show me the code
 
 Oneshot mode with keypresses and battery clients and matrix rain movie on background
