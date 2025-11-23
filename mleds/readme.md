@@ -8,7 +8,8 @@ data.
 
 ## Show me the code
 
-Oneshot mode with keypresses and battery clients and matrix rain movie on background:
+Oneshot mode with keypresses and battery clients and matrix rain movie on background
+(try using the keyboard with this one):
 
 ```sh
 wget -O mleds https://github.com/amospalla/reform/raw/refs/heads/main/mleds/mleds
