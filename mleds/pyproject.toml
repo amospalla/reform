@@ -37,12 +37,6 @@ ignore_missing_imports = true
 # Ignore output diagnostics on these globs
 ignore = ["**"]
 
-## Pydocstyle ##################################################################
-################################################################################
-################################################################################
-[tool.pydocstyle]
-convention = "google"
-
 ## Ruff ########################################################################
 ################################################################################
 ################################################################################
@@ -53,12 +47,13 @@ line-length = 88
 select = ["ALL"]
 
 ignore = [
-    #"ANN001", # Missing type annotation for function argument ... (Cobert en mypy)
+    # "ANN001", # Missing type annotation for function argument ... (Cobert en mypy)
+    # "ANN201", # missing-return-type                  (no m'interessen)
+    # "ANN202", # missing-return-type-private-function (cobert en mypy)
+    # "ARG002", # unused-method-argument               (cobert per PyCharm)
+    # "I001",   # unsorted-imports                     (cobert per PyCharm)
     "ANN002",  # Missing type annotations for *args
     "ANN003",  # Missing type annotations for **kwargs
-    #"ANN201", # missing-return-type                  (no m'interessen)
-    #"ANN202", # missing-return-type-private-function (cobert en mypy)
-    #"ARG002", # unused-method-argument               (cobert per PyCharm)
     "D100",    # missing-docstring-in-public-module   (es molt pesat)
     "D101",    # undocumented-public-class            (es molt pesat)
     "D102",    # undocumented-public-method           (es molt pesat)
@@ -76,7 +71,6 @@ ignore = [
     "FBT003",  #
     "FIX002",  # "Line contains TODO, consider resolving the issue"
     "G004",    # logging-f-string
-    # "I001",  # unsorted-imports                     (cobert per PyCharm)
     "PLR0913", # too-many-arguments                   (amb mes de 5 arguments es queixa)
     "PLR2044", # empty-comment
     "PT009",   # pytest-unittest-assertion
