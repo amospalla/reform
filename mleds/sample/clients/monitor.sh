@@ -15,7 +15,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-
 # This script monitors cpu and memory usage (using vmstat).
 
 # The first keyboard row is filled, from left to right, with the cpu usage,
@@ -27,14 +26,6 @@ set -eu
 
 # Ask mleds where its socket is.
 SOCKET="$(mleds path socket)"
-
-send_message() {
-    # Using netcat
-    echo "${1}" | nc -U "${SOCKET}"
-
-    # Using socat
-    # echo "${1}" | socat - "UNIX-CONNECT:${SOCKET}"
-}
 
 main() {
     local line
@@ -70,7 +61,7 @@ main() {
         #
         # The second rectangle is shown on the third row keyboard and shows memory
         # usage.
-        send_message "
+        echo "
             action=add_movie
             name=system_monitor
             copy_movie=blank
@@ -84,10 +75,14 @@ main() {
             priority=background
             end=true
             
-            action=disconnect
-            end=true
+            // action=disconnect
+            // end=true
         "
     done
 }
 
-main "${@}"
+# Using netcat
+main | nc -U "${SOCKET}"
+
+# Using socat
+# main | socat - "UNIX-CONNECT:${SOCKET}"
