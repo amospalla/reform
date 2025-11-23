@@ -505,6 +505,18 @@ class Server:
                 if value["task"]
             ],
         )
+        response.append(
+            f"intensity: {self.intensity}",
+        )
+        response.append(
+            f"socket_path: {self.configuration.socket_path}",
+        )
+        response.append(
+            f"keyboard_device: {self.configuration.keyboard_device}",
+        )
+        response.append(
+            f"hidraw_device: {self.configuration.hidraw_device}",
+        )
         return response
 
     async def list_scripts(self) -> list[str]:
