@@ -26,14 +26,14 @@ declare message
 # Usage: rectangle.sh x y width height direction fill value time
 #
 # Example:
-#     $ ./rectangle.sh 1 1 10 3 "#0f2808" "#aaff0a" right false 100 2
+#     $ ./rectangle.sh 1 1 10 3 "#0f2808" "#aaff0a" right false 100 2 urgent
 #
 #     print a rectangle:
-#         starting at position 1,1
-#         with width and height 10x3
-#         with a gradient using the specified start and end colors, direction and
-#         percentage
-#         during 2 seconds
+#         Starting at position 1,1.
+#         Sith width and height 10x3.
+#         Sith a gradient using the specified start and end colors, direction and
+#         percentage. Paint only the borders, do not fill.
+#         During 2 seconds, on the urgent priority.
 message="
     action=add_movie
     name=rectangle
@@ -44,7 +44,7 @@ message="
 
     action=play_movie
     name=rectangle
-    priority=foreground
+    priority=${11}
     end=true
 
     action=disconnect
