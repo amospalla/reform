@@ -132,6 +132,12 @@ default_battery_configuration = {
     ],
 }
 
+default_kanata_configuration = {
+    "kanata_host": "localhost",
+    "kanata_port": 3333,
+    "kanata_layers": {},
+}
+
 
 @dataclasses.dataclass
 class Configuration:
@@ -153,6 +159,9 @@ class Configuration:
     battery_charging_color: str
     battery_discharging_color: str
     battery_notification_events: list[tuple[int, int]]
+    kanata_host: str
+    kanata_port: int
+    kanata_layers: dict[str, list[str]]
 
 
 def configuration_dir_paths() -> list[Path]:
@@ -206,7 +215,7 @@ def default_socket_path() -> Path:
     return Path(f"/tmp/{PROGRAM_NAME}.sock")  # noqa: S108
 
 
-def get_configuration(  # noqa: C901, PLR0912
+def get_configuration(  # noqa: C901, PLR0912, PLR0915
     config_file: Path | None = None,
     keyboard_device: Path | None = None,
     hidraw_device: Path | None = None,
@@ -231,6 +240,10 @@ def get_configuration(  # noqa: C901, PLR0912
         data = {}
 
     for k, v in default_battery_configuration.items():
+        if k not in data:
+            data[k] = v
+
+    for k, v in default_kanata_configuration.items():
         if k not in data:
             data[k] = v
 
@@ -304,6 +317,9 @@ def get_configuration(  # noqa: C901, PLR0912
         battery_charging_color=data["battery_charging_color"],
         battery_discharging_color=data["battery_discharging_color"],
         battery_notification_events=data["battery_notification_events"],
+        kanata_host=data["kanata_host"],
+        kanata_port=data["kanata_port"],
+        kanata_layers=data["kanata_layers"],
     )
 
     logger.info("[Configuration] %s.", configuration)

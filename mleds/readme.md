@@ -110,12 +110,12 @@ couple of example script clients.
 - `mleds oneshot`: runs the specified commands and exit, without the need to spawn a
   server previously. Has the same interface as the _client_ command, it accepts a literal
   string or reading from stdin. Does not read _load.d_ neither _scripts.d_ folders.
-- `mleds keypresses`: client for the server that shows keyboard keypresses. By default
-  it plays on _foreground_ queue.
+- `mleds status`: show server running status.
+- `mleds play_movie`: play a movie.
+- `mleds run_client|stop_client`: start or stop a client. Available clients are
+  _keypresses_, _battery_ and _kanata_.
 - `mleds run_script|run_client|stop_client|set_intensity` shortcuts to
   sending these commands with the `mleds client "action=<my_action> ... end=true"`.
-- `mleds path hidraw|keyboard|socket`: show internal used paths used with the current
-  configuration.
 
 ## Install
 
@@ -142,6 +142,14 @@ cp mleds "${HOME}/bin" && chmod u+x "${HOME}/bin/mleds"
 mkdir "${HOME}/.config/mleds"
 cp -a etc/* "${HOME}/.config/mleds"
 ```
+
+## Available embedded clients
+
+There are 3 embedded clients on the program:
+
+- battery: shows the battery status at given intervals.
+- kanata: sets the colour leds for each kanata layer.
+- keypresses: gives feedback for the keys being pressed.
 
 ## FAQ
 

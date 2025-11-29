@@ -30,8 +30,8 @@ declare message
 #
 #     print a rectangle:
 #         Starting at position 1,1.
-#         Sith width and height 10x3.
-#         Sith a gradient using the specified start and end colors, direction and
+#         With width and height 10x3.
+#         With a gradient using the specified start and end colors, direction and
 #         percentage. Paint only the borders, do not fill.
 #         During 2 seconds, on the urgent priority.
 message="
