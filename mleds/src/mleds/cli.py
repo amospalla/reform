@@ -172,59 +172,66 @@ def main() -> None:  # noqa: C901, PLR0912
         check_path_exists(configuration.socket_path)
         check_path_writable(configuration.socket_path)
         if args.message == "-":
-            asyncio.run(
+            response_lines = asyncio.run(
                 messages_client(
                     message=sys.stdin.read(),
                     socket_path=configuration.socket_path,
                 ),
             )
+            print("\n".join(response_lines))
         else:
-            asyncio.run(
+            response_lines = asyncio.run(
                 messages_client(
                     message=args.message,
                     socket_path=configuration.socket_path,
                 ),
             )
+            print("\n".join(response_lines))
     elif args.mode == "status":
-        asyncio.run(
+        response_lines = asyncio.run(
             messages_client(
                 message="action=status end=true",
                 socket_path=configuration.socket_path,
             ),
         )
+        print("\n".join(response_lines))
     elif args.mode == "run_client":
-        asyncio.run(
+        response_lines = asyncio.run(
             messages_client(
                 message=f"action=run_client name={args.name} end=true",
                 socket_path=configuration.socket_path,
             ),
         )
+        print("\n".join(response_lines))
     elif args.mode == "stop_client":
-        asyncio.run(
+        response_lines = asyncio.run(
             messages_client(
                 message=f"action=stop_client name={args.name} end=true",
                 socket_path=configuration.socket_path,
             ),
         )
+        print("\n".join(response_lines))
     elif args.mode == "run_script":
         check_path_exists(configuration.socket_path)
-        asyncio.run(
+        response_lines = asyncio.run(
             messages_client(
                 message=f"action=run_script name={args.script_name} end=true",
                 socket_path=configuration.socket_path,
             ),
         )
+        print("\n".join(response_lines))
     elif args.mode == "set_intensity":
         check_path_exists(configuration.socket_path)
-        asyncio.run(
+        response_lines = asyncio.run(
             messages_client(
                 message=f"action=set_intensity value={args.intensity_value} end=true",
                 socket_path=configuration.socket_path,
             ),
         )
+        print("\n".join(response_lines))
     elif args.mode == "play_movie":
         check_path_exists(configuration.socket_path)
-        asyncio.run(
+        response_lines = asyncio.run(
             messages_client(
                 message=(
                     f"action=play_movie name={args.movie_name} "
@@ -235,12 +242,13 @@ def main() -> None:  # noqa: C901, PLR0912
         )
     elif args.mode == "stop_movies":
         check_path_exists(configuration.socket_path)
-        asyncio.run(
+        response_lines = asyncio.run(
             messages_client(
                 message=(f"action=stop_movies priority={args.priority} end=true"),
                 socket_path=configuration.socket_path,
             ),
         )
+        print("\n".join(response_lines))
     elif args.mode == "path":
         if args.name == "hidraw":
             print(configuration.hidraw_device)

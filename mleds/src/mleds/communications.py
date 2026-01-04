@@ -70,10 +70,11 @@ async def messages_server(
             logger.info("Client disconnected before close completed.")
 
 
-async def messages_client(message: str, socket_path: Path) -> None:
+async def messages_client(message: str, socket_path: Path) -> list[str]:
     """Send messages to the server through socket and print its response."""
     logger.info("Start client message.")
 
+    lines: list[str] = []
     reader, writer = await asyncio.open_unix_connection(socket_path)
 
     for query_line in [*message.splitlines(), "END"]:
@@ -86,7 +87,8 @@ async def messages_client(message: str, socket_path: Path) -> None:
         if response_line_bytes in {b"", b"END\n"}:
             break
         response_line = response_line_bytes.decode("utf-8")
-        print(response_line.strip())
+        lines.append(response_line.strip())
 
     writer.close()
     await writer.wait_closed()
+    return lines
