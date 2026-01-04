@@ -19,7 +19,7 @@ Oneshot mode with a menu interface (requires fzf to be available). Use cursors, 
 and escape keys to navigate the menu and activate items:
 
 ```sh
-wget -O mleds https://github.com/amospalla/reform/raw/refs/heads/main/mleds/mleds
+wget -O mleds https://github.com/amospalla/reform/releases/download/v0.0.2/mleds
 chmod 0755 mleds
 sudo ./mleds oneshot-menu
 ```
@@ -28,7 +28,7 @@ Oneshot mode with keypresses and battery clients and matrix rain movie on backgr
 (try using the keyboard with this one):
 
 ```sh
-wget -O mleds https://github.com/amospalla/reform/raw/refs/heads/main/mleds/mleds
+wget -O mleds https://github.com/amospalla/reform/releases/download/v0.0.2/mleds
 chmod 0755 mleds
 sudo ./mleds oneshot "action=play_movie name=startup1 priority=urgent end=true action=play_movie name=matrix priority=background end=true action=run_client name=keypresses end=true action=run_client name=battery end=true"
 ```
