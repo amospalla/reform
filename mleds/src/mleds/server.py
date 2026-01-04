@@ -358,20 +358,24 @@ class Server:
             priority=priority,  # type:ignore[arg-type]
         )
 
-        match priority:
-            case "background":
-                logger.info("play_movie(): Set background movie to: %s.", movie.name)
-                self.slot.background = playing_movie
-            case "foreground":
-                logger.info("play_movie(): Set foreground movie to: %s.", movie.name)
-                self.slot.foreground = playing_movie
-            case "urgent":
-                logger.info("play_movie(): Enqueue urgent movie: %s.", movie.name)
-                self.slot.urgents.append(playing_movie)
-            case _:
-                raise RuntimeError  # Make static checker happy
-
         async with scheduler_lock:
+            match priority:
+                case "background":
+                    logger.info(
+                        "play_movie(): Set background movie to: %s.", movie.name
+                    )
+                    self.slot.background = playing_movie
+                case "foreground":
+                    logger.info(
+                        "play_movie(): Set foreground movie to: %s.", movie.name
+                    )
+                    self.slot.foreground = playing_movie
+                case "urgent":
+                    logger.info("play_movie(): Enqueue urgent movie: %s.", movie.name)
+                    self.slot.urgents.append(playing_movie)
+                case _:
+                    raise RuntimeError  # Make static checker happy
+
             await self.movie_scheduler(
                 notify_writer=True,
                 movie_added_with_priority=priority,
