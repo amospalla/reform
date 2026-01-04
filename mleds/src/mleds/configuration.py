@@ -111,12 +111,12 @@ def default_keypresses_keyboard_layout() -> list[str]:
 
 
 default_battery_configuration = {
-    "battery_border_color": "#3d1986",
+    "battery_border_color": "#000818",
     "battery_increase_color_start": "#206000",
     "battery_increase_color_end": "#00a000",
-    "battery_decrease_color_start": "#303000",
-    "battery_decrease_color_end": "#806000",
-    "battery_charging_color": "#008000",
+    "battery_decrease_color_start": "#803000",
+    "battery_decrease_color_end": "#303000",
+    "battery_charging_color": "#a03000",
     "battery_discharging_color": "#380000",
     "battery_notification_events": [
         # Up

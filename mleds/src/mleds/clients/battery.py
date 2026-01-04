@@ -33,7 +33,14 @@ class Battery(Client):
         super().__init__(*args, **kwargs)
 
     async def run(self) -> None:
+        self.percentage, self.charging = self.get_data()
+        if self.charging:
+            await self.send_message(message=self.next_message(1))
+        else:
+            await self.send_message(message=self.next_message(-1))
+
         while True:
+            await asyncio.sleep(10)
             new_percentage, self.charging = self.get_data()
             if (
                 self.percentage,
@@ -44,8 +51,6 @@ class Battery(Client):
                 )
             self.percentage = new_percentage
 
-            await asyncio.sleep(10)
-
     def get_data(self) -> tuple[int, bool]:
         with Path("/sys/class/power_supply/BAT0/capacity").open("r") as f:
             percentage = int(f.read().strip())
@@ -54,10 +59,10 @@ class Battery(Client):
         return percentage, charging
 
     def next_message(self, increment: int) -> list[str]:
-        if self.charging:
-            charging_color = self.configuration.battery_charging_color
-        else:
-            charging_color = self.configuration.battery_discharging_color
+        # if self.charging:
+        #     charging_color = self.configuration.battery_charging_color
+        # else:
+        #     charging_color = self.configuration.battery_discharging_color
         times = 0.4
         if increment > 0:
             start_color = self.configuration.battery_increase_color_start
@@ -74,8 +79,8 @@ class Battery(Client):
             "rectangle=  8 1  2 3 #000000 #000000 right false 100",
             f"rectangle= 1 1  9 3 {start_color} {end_color}",
             f"right true {self.percentage}",
-            f"rectangle= 3 5  2 1 {charging_color} {charging_color} right true 100",
-            f"rectangle= 7 5  2 1 {charging_color} {charging_color} right true 100",
+            # f"rectangle= 3 5  2 1 {charging_color} {charging_color} right true 100",
+            # f"rectangle= 7 5  2 1 {charging_color} {charging_color} right true 100",
             "end=true",
         ]
         frame1 = [
@@ -88,8 +93,8 @@ class Battery(Client):
             "rectangle=  8 1  2 3 #000000 #000000 right false 100",
             f"rectangle= 1 1  9 3 {start_color} {end_color} right true",
             f"{self.percentage - 11}",
-            f"rectangle= 3 5  2 1 {charging_color} {charging_color} right true 100",
-            f"rectangle= 7 5  2 1 {charging_color} {charging_color} right true 100",
+            # f"rectangle= 3 5  2 1 {charging_color} {charging_color} right true 100",
+            # f"rectangle= 7 5  2 1 {charging_color} {charging_color} right true 100",
             "end=true",
         ]
         create_movie = [
@@ -98,7 +103,7 @@ class Battery(Client):
             f"copy_movie={MOVIE_NAME}1 times=0.4",
             "end=true",
             f"action=add_movie name={MOVIE_NAME}",
-            f"copy_movie={MOVIE_NAME} repetitions=3 end=true",
+            f"copy_movie={MOVIE_NAME} repetitions=5 end=true",
             f"action=play_movie name={MOVIE_NAME} priority={self.priority} end=true,",
         ]
         return [*frame0, *frame1, *create_movie]
