@@ -294,7 +294,7 @@ async def oneshot(message: str) -> None:
     lines = message.splitlines()
     response_lines: list[str] = []
     try:
-        messages_buffer = shared["server_instance"].get_messages_reader()
+        messages_buffer = shared["server_instance"].get_messages_reader(use_lock=True)
         for line in lines:
             receive_response_lines, _disconnected = await messages_buffer.add(line)
             response_lines.extend(receive_response_lines)
@@ -371,7 +371,6 @@ async def oneshot_event_loop(configuration: Configuration, message: str) -> None
 async def oneshot_menu_event_loop(configuration: Configuration) -> None:
     """Run a server with a menu and exit on menu quit."""
     shared["server_instance"] = Server(configuration=configuration, oneshot=True)
-    shared["menu_mode"] = "oneshot-menu"
     try:
         await asyncio.gather(
             asyncio.sleep(1),
