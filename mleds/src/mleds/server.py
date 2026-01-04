@@ -358,23 +358,27 @@ class Server:
 
     async def play_movie(self, message: message_t) -> None:
         priority = "foreground"  # default priority if no priority is specified.
+        name = ""
         for key, value in message:
             match key:
                 case "action":
                     pass
                 case "name":
-                    movie = self.movies[value]
+                    name = value
                 case "priority":
-                    if value not in ("background", "foreground", "urgent"):
-                        raise InvalidConfigurationError(
-                            f"invalid value for priority: '{value}'",
-                        )
                     priority = value
                 case _:
                     raise InvalidConfigurationError(
-                        f"unknown parameter for action 'enqueue_movie': '{key}'",
+                        f"unknown parameter for action 'play_movie': '{key}'",
                     )
 
+        if priority not in ("background", "foreground", "urgent"):
+            raise InvalidConfigurationError(
+                f"invalid value for priority: '{value}'",
+            )
+        if not name:
+            raise InvalidConfigurationError("movie name not specified")
+        movie = self.movies[name]
         playing_movie = PlayingMovie(
             movie=movie,
             priority=priority,  # type:ignore[arg-type]
@@ -498,6 +502,11 @@ class Server:
         """Read message lines and run them."""
         disconnect = False
 
+        if not message:
+            raise InvalidConfigurationError("Received empty message")
+        if message[0][0] != "action":
+            raise InvalidConfigurationError("Missing action line")
+
         # message[0][0] == "action"
         action = message[0][1]
 
@@ -537,7 +546,7 @@ class Server:
                 response = ["ok"]
                 disconnect = True
             case _:
-                raise InvalidConfigurationError(f"invalid action '{message[0][1]}'")
+                raise InvalidConfigurationError(f"unknown action '{action}'")
         return response, disconnect
 
     async def get_status(self, message: message_t) -> list[str]:
@@ -612,6 +621,7 @@ class Server:
         ]
 
     async def run_client(self, message: message_t) -> list[str]:
+        name = ""
         for key, value in message:
             match key:
                 case "action":
@@ -620,7 +630,7 @@ class Server:
                     name = value
                 case _:
                     raise InvalidConfigurationError(
-                        f"unknown parameter for action 'load': '{key}'",
+                        f"unknown parameter for action 'run_client': '{key}'",
                     )
 
         if not name:
@@ -629,7 +639,7 @@ class Server:
             )
         if name not in self.clients:
             raise InvalidConfigurationError(
-                "Command 'run_client' invalid client name.",
+                "Command 'run_client' unknown client.",
             )
         if self.clients[name]["task"] is not None:
             raise InvalidConfigurationError(
@@ -646,6 +656,7 @@ class Server:
         return ["ok"]
 
     async def stop_client(self, message: message_t) -> list[str]:
+        name = ""
         for key, value in message:
             match key:
                 case "action":
@@ -654,7 +665,7 @@ class Server:
                     name = value
                 case _:
                     raise InvalidConfigurationError(
-                        f"unknown parameter for action 'load': '{key}'",
+                        f"unknown parameter for action 'stop_client': '{key}'",
                     )
 
         if not name:
@@ -663,7 +674,7 @@ class Server:
             )
         if name not in self.clients:
             raise InvalidConfigurationError(
-                "Command 'run_client' invalid client name.",
+                "Command 'run_client' unknown client.",
             )
         if not (task := self.clients[name]["task"]):
             raise InvalidConfigurationError(
@@ -688,7 +699,7 @@ class Server:
                     filename = value
                 case _:
                     raise InvalidConfigurationError(
-                        f"unknown parameter for action 'load': '{key}'",
+                        f"unknown parameter for action 'run_script': '{key}'",
                     )
 
         if not filename:
@@ -875,7 +886,7 @@ def message_keyvalues(lines: list[str]) -> message_t:
     single_line_text = "\n".join(lines).replace("\n", " ")
     parts = [
         part
-        for part in re.split(r"([a-z_]+)=", single_line_text, flags=re.IGNORECASE)
+        for part in re.split(r"(\S+)=", single_line_text, flags=re.IGNORECASE)
         if part.strip()
     ]
     try:
