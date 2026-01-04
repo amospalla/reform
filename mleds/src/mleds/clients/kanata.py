@@ -19,6 +19,7 @@ import re
 
 from mleds.clients.base import Client
 
+MOVIE_NAME = "hidden_kanata"
 logger = logging.getLogger(__name__)
 
 
@@ -58,7 +59,7 @@ class Kanata(Client):
         if name in self.configuration.kanata_layers:
             message = [
                 "action=add_movie",
-                "name=kanata",
+                f"name={MOVIE_NAME}",
                 "create_frames=true",
                 "times=-1",
                 "pixels=",
@@ -66,7 +67,7 @@ class Kanata(Client):
                 "end=true",
                 #
                 "action=play_movie",
-                "name=kanata",
+                f"name={MOVIE_NAME}",
                 "priority=background",
                 "end=true",
             ]

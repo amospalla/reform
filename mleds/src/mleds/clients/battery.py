@@ -19,6 +19,7 @@ from pathlib import Path
 
 from mleds.clients.base import Client
 
+MOVIE_NAME = "hidden_battery"
 logger = logging.getLogger(__name__)
 
 
@@ -62,7 +63,7 @@ class Battery(Client):
             start_color = self.configuration.battery_decrease_color_start
             end_color = self.configuration.battery_decrease_color_end
         frame0 = [
-            f"action=add_movie name=battery0 copy_movie=blank times={times}",
+            f"action=add_movie name={MOVIE_NAME}0 copy_movie=blank times={times}",
             f"rectangle= 0 0 10 5 {self.configuration.battery_border_color}",
             f"{self.configuration.battery_border_color} right false 100",
             f"rectangle=10 1  2 3 {self.configuration.battery_border_color}",
@@ -76,7 +77,7 @@ class Battery(Client):
         ]
         frame1 = [
             # Same frame as before, with {percentage-11}
-            f"action=add_movie name=battery1 copy_movie=blank times={times}",
+            f"action=add_movie name={MOVIE_NAME}1 copy_movie=blank times={times}",
             f"rectangle= 0 0 10 5 {self.configuration.battery_border_color}",
             f"{self.configuration.battery_border_color} right false 100",
             f"rectangle=10 1  2 3 {self.configuration.battery_border_color}",
@@ -89,12 +90,12 @@ class Battery(Client):
             "end=true",
         ]
         create_movie = [
-            "action=add_movie name=battery",
-            "copy_movie=battery0 times=0.4",
-            "copy_movie=battery1 times=0.4",
+            f"action=add_movie name={MOVIE_NAME}",
+            f"copy_movie={MOVIE_NAME}0 times=0.4",
+            f"copy_movie={MOVIE_NAME}1 times=0.4",
             "end=true",
-            "action=add_movie name=battery",
-            "copy_movie=battery repetitions=3 end=true",
-            "action=play_movie name=battery priority=urgent end=true,",
+            f"action=add_movie name={MOVIE_NAME}",
+            f"copy_movie={MOVIE_NAME} repetitions=3 end=true",
+            f"action=play_movie name={MOVIE_NAME} priority=urgent end=true,",
         ]
         return [*frame0, *frame1, *create_movie]

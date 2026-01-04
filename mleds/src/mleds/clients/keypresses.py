@@ -21,6 +21,7 @@ from mleds.clients.base import Client
 from mleds.constants import KEYBOARD_COLUMNS, KEYBOARD_ROWS
 from mleds.read_keyboard import InputEventGenerator, evdev_events
 
+MOVIE_NAME = "hidden_keypresses"
 FRAME_TIME = 0.05
 IDLE_STATE = 6
 
@@ -118,10 +119,10 @@ class KeyPresses(Client):
         )
 
         return [
-            "action=add_movie name=keypresses create_frames=true times=1.5 pixels=",
+            f"action=add_movie name={MOVIE_NAME} create_frames=true times=1.5 pixels=",
             colors,
             "end=true",
-            "action=play_movie name=keypresses",
+            f"action=play_movie name={MOVIE_NAME}",
             f"priority={self.configuration.keypresses_priority}",
             "end=true",
         ]
