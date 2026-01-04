@@ -50,6 +50,7 @@ def parse_args() -> argparse.Namespace:
     client_command_help = (
         "Send raw commands to the server. Use a single dash '-' to read from stdin."
     )
+    menu_command_help = "Run menu interface."
     oneshot_command_help = (
         "Run raw commands directly without a running server. "
         "Use single dash '-' to read from stdin."
@@ -76,6 +77,7 @@ def parse_args() -> argparse.Namespace:
 
     _parser_server = subparser.add_parser("server", help=server_command_help)
     parser_client = subparser.add_parser("client", help=client_command_help)
+    _parser_menu = subparser.add_parser("menu", help=menu_command_help)
     parser_client.add_argument("message")
     parser_oneshot = subparser.add_parser("oneshot", help=oneshot_command_help)
     parser_oneshot.add_argument("message")
@@ -256,6 +258,12 @@ def main() -> None:  # noqa: C901, PLR0912
             print(configuration.keyboard_device)
         if args.name == "socket":
             print(configuration.socket_path)
+    elif args.mode == "menu":
+        from mleds.menu.main import main_menu  # noqa: PLC0415
+
+        check_path_exists(configuration.socket_path)
+        check_path_writable(configuration.socket_path)
+        asyncio.run(main_menu(socket_path=configuration.socket_path))
 
 
 async def oneshot(message: str) -> None:
