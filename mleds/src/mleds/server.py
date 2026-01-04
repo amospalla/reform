@@ -94,11 +94,12 @@ class MessagesBuffer:
         - key=value, where value spans across lines, allow single line messages.
     """
 
-    def __init__(self, server: "Server") -> None:
+    def __init__(self, server: "Server", use_lock: bool) -> None:
         self.lines: list[str] = []
         self.partial_pre = ""  # line contents before "end=true"
         # self.partial_post = ""  # line contents after "end=true""
         self.server = server
+        self.use_lock = use_lock
 
     async def add(self, line: str) -> tuple[list[str], bool]:
         """Receive a new line to the next message and if ready process it.
@@ -130,7 +131,15 @@ class MessagesBuffer:
                 self.lines.append(self.partial_pre)
             try:
                 message = message_keyvalues(self.lines)
-                async with process_messages_lock:
+                if self.use_lock:
+                    async with process_messages_lock:
+                        (new_lines, new_disconnect) = await self.server.receive_message(
+                            message,
+                        )
+                else:
+                    # Exemple: run_script command, which will instantiate a new
+                    # MessagesBuffer which should not try to lock again
+                    # process_messages_lock.
                     (new_lines, new_disconnect) = await self.server.receive_message(
                         message,
                     )
@@ -182,8 +191,8 @@ class Server:
         self.scripts_paths = configuration.scripts_paths
         self.configuration = configuration
 
-    def get_messages_reader(self) -> MessagesBuffer:
-        return MessagesBuffer(self)
+    def get_messages_reader(self, use_lock: bool) -> MessagesBuffer:
+        return MessagesBuffer(server=self, use_lock=use_lock)
 
     async def async_init(
         self,
@@ -198,7 +207,7 @@ class Server:
                 if file.is_file()
             ):
                 logger.info("async_init(): loading command file %s.", load_file)
-                messages_reader = self.get_messages_reader()
+                messages_reader = self.get_messages_reader(use_lock=True)
                 with load_file.open("r") as f:
                     for line in f.readlines():
                         _response_lines, _disconnect = await messages_reader.add(line)
@@ -210,7 +219,7 @@ class Server:
                 if file.is_file()
             ):
                 logger.info("async_init(): loading embedded file %s.", resource_file)
-                messages_reader = self.get_messages_reader()
+                messages_reader = self.get_messages_reader(use_lock=True)
                 with resource_file.open("r") as f:
                     for line in f.readlines():
                         _response_lines, _disconnect = await messages_reader.add(line)
@@ -700,7 +709,7 @@ class Server:
 
         logger.debug(f"run_script_file(): running '{file!s}'.")
         response_lines: list[str] = []
-        mbuffer = self.get_messages_reader()
+        mbuffer = self.get_messages_reader(use_lock=False)
         with file.open("rb") as f:
             for line in [line.decode("utf-8").strip() for line in f.readlines()]:
                 receive_response_lines, _disconnected = await mbuffer.add(line)

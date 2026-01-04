@@ -50,6 +50,6 @@ class Client:
 
     async def send_message(self, message: list[str]) -> None:
         """Sends a message to the server."""
-        reader = self.server.get_messages_reader()
+        reader = self.server.get_messages_reader(use_lock=True)
         for line in message:
             await reader.add(line)

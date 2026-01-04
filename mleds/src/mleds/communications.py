@@ -31,7 +31,7 @@ async def messages_server(
 
     This method is spawned once for each new client connection.
     """
-    messages_reader = shared["server_instance"].get_messages_reader()
+    messages_reader = shared["server_instance"].get_messages_reader(use_lock=True)
     disconnect = False
 
     try:
