@@ -70,6 +70,13 @@ def parse_args() -> argparse.Namespace:
     play_movie_command_help = "Run the specified movie on the specified queue."
 
     parser = argparse.ArgumentParser(prog=PROGRAM_NAME, description=description)
+    parser.add_argument(
+        "-V",
+        "--version",
+        action="version",
+        version=f"{PROGRAM_NAME} {PROGRAM_VERSION}",
+    )
+
     parser.add_argument("-v", "--verbose", action="count", default=0)
     parser.add_argument("-s", "--socket-path", type=Path)
     parser.add_argument("-c", "--config-file", type=Path)
