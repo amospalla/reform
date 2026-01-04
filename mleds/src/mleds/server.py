@@ -310,6 +310,30 @@ class Server:
         self.movies[movie_name] = movie
         return "ok"
 
+    async def message_stop_movies(self, message: message_t) -> None:
+        """Stop all movies in a priority queue."""
+        priority = None
+        for key, value in message:
+            match key:
+                case "action":
+                    pass
+                case "priority":
+                    priority = value
+                case _:
+                    raise InvalidConfigurationError(
+                        f"unknown parameter for 'stop_movies': '{key}'",
+                    )
+        if priority is None:
+            raise InvalidConfigurationError("Priority not specified")
+        if priority not in {"background", "foreground", "urgent"}:
+            raise InvalidConfigurationError(f"Invalid priority {priority}")
+
+        async with scheduler_lock:
+            await self.movie_scheduler(
+                notify_writer=True,
+                stop_priority=priority,
+            )
+
     async def play_movie(self, message: message_t) -> None:
         priority = "foreground"  # default priority if no priority is specified.
         for key, value in message:
@@ -358,6 +382,7 @@ class Server:
         notify_writer: bool,
         movie_ended: bool = False,
         movie_added_with_priority: priority_t | None = None,
+        stop_priority: str | None = None,
     ) -> None:
         """Reacts to movie slots changes, sets them accordingly and notify writer.
 
@@ -403,6 +428,27 @@ class Server:
                 # Ended movie was foreground/background and there is a background movie.
                 self.slot.playing = self.slot.background
 
+        elif stop_priority:
+            if self.slot.playing is not None:  # make linter happy
+                if self.slot.playing.priority == stop_priority:
+                    self.slot.playing = None
+
+            if stop_priority == "background":
+                self.slot.background = self.slot.playing = PlayingMovie(
+                    movie=self.movies["blank"],
+                    priority="background",
+                )
+            elif stop_priority == "foreground":
+                self.slot.foreground = None
+            elif stop_priority == "urgent":
+                self.slot.urgents.clear()
+
+            if self.slot.playing is None:
+                if self.slot.foreground is not None:
+                    self.slot.playing = self.slot.foreground
+                else:
+                    self.slot.playing = self.slot.background
+
         # It is posible that there has no been any change to current playing movie.
         # For example:
         #   - background or foreground movie changed, but urgent movie is playing.
@@ -442,6 +488,9 @@ class Server:
                 response = [await self.add_movie(message)]
             case "play_movie":
                 await self.play_movie(message)
+                response = ["ok"]
+            case "stop_movies":
+                await self.message_stop_movies(message)
                 response = ["ok"]
             case "set_intensity":
                 if message[1][1].startswith("+"):

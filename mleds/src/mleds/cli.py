@@ -57,6 +57,7 @@ def parse_args() -> argparse.Namespace:
     status_command_help = "Show current server status."
     run_client_command_help = "Start an embedded client."
     stop_client_command_help = "Stop an embedded client."
+    stop_movies_command_help = "Stop running movies on a priority queue."
     run_script_command_help = "Run a named script on the server."
     set_intensity_command_help = (
         "Sets the server brightness intensity, affects everything playing. "
@@ -99,6 +100,14 @@ def parse_args() -> argparse.Namespace:
         help=stop_client_command_help,
     )
     parser_stop_client.add_argument("name")
+    parser_stop_movies = subparser.add_parser(
+        "stop_movies",
+        help=stop_movies_command_help,
+    )
+    parser_stop_movies.add_argument(
+        "priority",
+        choices=["background", "foreground", "urgent"],
+    )
     parser_run_script = subparser.add_parser("run_script", help=run_script_command_help)
     parser_run_script.add_argument("script_name")
     parser_set_intensity = subparser.add_parser(
@@ -221,6 +230,14 @@ def main() -> None:  # noqa: C901, PLR0912
                     f"action=play_movie name={args.movie_name} "
                     f"priority={args.priority} end=true"
                 ),
+                socket_path=configuration.socket_path,
+            ),
+        )
+    elif args.mode == "stop_movies":
+        check_path_exists(configuration.socket_path)
+        asyncio.run(
+            messages_client(
+                message=(f"action=stop_movies priority={args.priority} end=true"),
                 socket_path=configuration.socket_path,
             ),
         )

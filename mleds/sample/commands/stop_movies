@@ -1,0 +1,11 @@
+// Remove the movie(s) from the specified priority queue and stop the current playing
+// movie(s) if there are any being played on the priority queue to stop.
+//
+// The available priorities are:
+// - background
+// - foreground
+// - urgent
+
+action=stop_movies
+priority=foreground
+end=true
