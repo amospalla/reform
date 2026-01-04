@@ -1,37 +1,49 @@
 import asyncio
-from pathlib import Path
 
 from mleds.communications import Status, messages_client, parse_status
+from mleds.shared import shared
 from simple_menu.configuration import get_configuration
 from simple_menu.item.base import ItemTextType
 from simple_menu.item.item import Item
 from simple_menu.item.menu import Menu
 
 
-async def main_menu(socket_path: Path) -> None:
+async def communicate(message: str) -> list[str]:
+    if shared["socket_path"] is not None:
+        return await messages_client(
+            message=message,
+            socket_path=shared["socket_path"],
+        )
+    else:
+        messages_reader = shared["server_instance"].get_messages_reader(use_lock=True)
+        for line in message.splitlines():
+            response, _disconnected = await messages_reader.add(line)
+        return response
+
+
+async def main_menu(include_quit: bool) -> None:
     configuration = get_configuration(
         config_file=None,
         requested_interface="fzf",
         requested_token_separators=[],
     )
     token_separator = configuration.token_separators[0]
-
+    menu_items = [
+        *[
+            (MenuQueue, queue_name)
+            for queue_name in ("background", "foreground", "urgent")
+        ],
+        (MenuClient, ""),
+        (MenuScripts, ""),
+        (ItemIntensity, "upper"),
+        (ItemIntensity, "lower"),
+    ]
+    if include_quit:
+        menu_items.append((ItemQuit, ""))
     await Menu(
         configuration=configuration,
         value=token_separator.join(("title", "mleds main menu")),
-        menu_items=[
-            *[
-                (
-                    MenuQueue,
-                    token_separator.join((queue_name, str(socket_path))),
-                )
-                for queue_name in ("background", "foreground", "urgent")
-            ],
-            (MenuClient, str(socket_path)),
-            (MenuScripts, str(socket_path)),
-            (ItemIntensity, token_separator.join((str(socket_path), "upper"))),
-            (ItemIntensity, token_separator.join((str(socket_path), "lower"))),
-        ],
+        menu_items=menu_items,
     ).execute()
 
 
@@ -39,18 +51,14 @@ class MenuQueue(Menu):
     item_type = "MenuQueue"
 
     async def set_title(self) -> None:
-        queue, _ = self.value.split(self.delimiter)
+        queue = self.value
         self.title = f"queue: {queue}"
 
     async def set_text(self) -> None:
         self.texts.type = ItemTextType.menu
-        queue, socket_path_str = self.value.split(self.delimiter)
-        socket_path = Path(socket_path_str)
+        queue = self.value
         status = parse_status(
-            await messages_client(
-                message="action=status end=true",
-                socket_path=socket_path,
-            ),
+            await communicate(message="action=status end=true"),
         )
         self.texts.category = "queue"
         self.texts.subcategory = queue
@@ -76,36 +84,16 @@ class MenuQueue(Menu):
                     self.texts.text = "<empty>"
 
     async def set_items(self) -> None:
-        queue, socket_path_str = self.value.split(self.delimiter)
-        socket_path = Path(socket_path_str)
+        queue = self.value
         status = parse_status(
-            await messages_client(
-                message="action=status end=true",
-                socket_path=socket_path,
-            ),
+            await communicate(message="action=status end=true"),
         )
-        self.items = [
-            (
-                ItemQueueStop,
-                self.delimiter.join(
-                    (
-                        queue,
-                        socket_path_str,
-                    ),
-                ),
-            )
-        ]
+        self.items = [(ItemQueueStop, queue)]
         self.items.extend(
             [
                 (
                     ItemMovie,
-                    self.delimiter.join(
-                        (
-                            queue,
-                            socket_path_str,
-                            movie,
-                        ),
-                    ),
+                    self.delimiter.join((queue, movie)),
                 )
                 for movie in status.available_movies
                 if movie != "blank" and not movie.startswith("hidden_")
@@ -122,10 +110,7 @@ class MenuClient(Menu):
     async def set_text(self) -> None:
         self.texts.type = ItemTextType.menu
         status = parse_status(
-            await messages_client(
-                message="action=status end=true",
-                socket_path=Path(self.value),
-            ),
+            await communicate(message="action=status end=true"),
         )
 
         self.texts.subcategory = "clients"
@@ -137,17 +122,10 @@ class MenuClient(Menu):
 
     async def set_items(self) -> None:
         status = parse_status(
-            await messages_client(
-                message="action=status end=true",
-                socket_path=Path(self.value),
-            ),
+            await communicate(message="action=status end=true"),
         )
         self.items = [
-            (
-                ItemClient,
-                self.delimiter.join((self.value, client_name)),
-            )
-            for client_name in status.available_clients
+            (ItemClient, client_name) for client_name in status.available_clients
         ]
 
 
@@ -156,17 +134,13 @@ class ItemMovie(Item):
     lock = asyncio.Lock()
 
     async def set_shared_data(self) -> Status:
-        _queue, socket_path_str, _movie_name = self.value.split(self.delimiter)
         return parse_status(
-            await messages_client(
-                message="action=status end=true",
-                socket_path=Path(socket_path_str),
-            ),
+            await communicate(message="action=status end=true"),
         )
 
     async def set_text(self) -> None:
         self.texts.type = ItemTextType.action
-        queue, _socket_path_str, movie_name = self.value.split(self.delimiter)
+        queue, movie_name = self.value.split(self.delimiter)
         status = await self.get_shared_data()
         self.texts.category = "movie"
         self.texts.subcategory = "play"
@@ -184,10 +158,9 @@ class ItemMovie(Item):
         self.texts.text = movie_name
 
     async def execute(self) -> None:
-        queue, socket_path_str, movie_name = self.value.split(self.delimiter)
-        await messages_client(
+        queue, movie_name = self.value.split(self.delimiter)
+        await communicate(
             message=f"action=play_movie name={movie_name} priority={queue} end=true",
-            socket_path=Path(socket_path_str),
         )
 
 
@@ -200,17 +173,12 @@ class ItemQueueStop(Item):
         self.texts.text = "stop playing movies"
 
     async def execute(self) -> None:
-        queue, socket_path_str = self.value.split(self.delimiter)
+        queue = self.value
         if queue == "background":
-            await messages_client(
-                message="action=play_movie name=blank priority=background end=true",
-                socket_path=Path(socket_path_str),
-            )
+            message = "action=play_movie name=blank priority=background end=true"
         else:
-            await messages_client(
-                message=f"action=stop_movie queue={queue} end=true",
-                socket_path=Path(socket_path_str),
-            )
+            message = f"action=stop_movie queue={queue} end=true"
+        await communicate(message=message)
 
 
 class ItemClient(Item):
@@ -218,64 +186,46 @@ class ItemClient(Item):
     lock = asyncio.Lock()
 
     async def set_shared_data(self) -> Status:
-        socket_path_str, _movie_name = self.value.split(self.delimiter)
         return parse_status(
-            await messages_client(
-                message="action=status end=true",
-                socket_path=Path(socket_path_str),
-            ),
+            await communicate(message="action=status end=true"),
         )
 
     async def set_text(self) -> None:
         self.texts.type = ItemTextType.action
-        _socket_path_str, client_name = self.value.split(self.delimiter)
+        client_name = self.value
         status = await self.get_shared_data()
         if client_name in status.running_clients:
             self.texts.status = "<running>"
         self.texts.text = client_name
 
     async def execute(self) -> None:
-        socket_path_str, client_name = self.value.split(self.delimiter)
+        client_name = self.value
         status = parse_status(
-            await messages_client(
-                message="action=status end=true",
-                socket_path=Path(socket_path_str),
-            ),
+            await communicate(message="action=status end=true"),
         )
         if client_name in status.running_clients:
-            await messages_client(
-                message=f"action=stop_client name={client_name} end=true",
-                socket_path=Path(socket_path_str),
-            )
+            message = f"action=stop_client name={client_name} end=true"
         else:
-            await messages_client(
-                message=f"action=run_client name={client_name} end=true",
-                socket_path=Path(socket_path_str),
-            )
+            message = f"action=run_client name={client_name} end=true"
+        await communicate(message=message)
 
 
 class ItemIntensity(Item):
     item_type = "ItemIntensity"
 
     async def set_text(self) -> None:
-        socket_path_str, action = self.value.split(self.delimiter)
+        action = self.value
         status = parse_status(
-            await messages_client(
-                message="action=status end=true",
-                socket_path=Path(socket_path_str),
-            ),
+            await communicate(message="action=status end=true"),
         )
         self.texts.type = ItemTextType.action
         self.texts.subcategory = "intensity"
         self.texts.text = f"{status.intensity:4.2f} <{action}>"
 
     async def execute(self) -> None:
-        socket_path_str, action = self.value.split(self.delimiter)
+        action = self.value
         symbol = {"upper": "+", "lower": "-"}[action]
-        await messages_client(
-            message=f"action=set_intensity value={symbol}0.05 end=true",
-            socket_path=Path(socket_path_str),
-        )
+        await communicate(message=f"action=set_intensity value={symbol}0.05 end=true")
 
 
 class MenuScripts(Menu):
@@ -291,17 +241,10 @@ class MenuScripts(Menu):
 
     async def set_items(self) -> None:
         status = parse_status(
-            await messages_client(
-                message="action=status end=true",
-                socket_path=Path(self.value),
-            ),
+            await communicate(message="action=status end=true"),
         )
         self.items = [
-            (
-                ItemScript,
-                self.delimiter.join((self.value, script_name)),
-            )
-            for script_name in status.available_scripts
+            (ItemScript, script_name) for script_name in status.available_scripts
         ]
 
 
@@ -310,22 +253,25 @@ class ItemScript(Item):
     lock = asyncio.Lock()
 
     async def set_shared_data(self) -> Status:
-        socket_path_str, _script_name = self.value.split(self.delimiter)
         return parse_status(
-            await messages_client(
-                message="action=status end=true",
-                socket_path=Path(socket_path_str),
-            ),
+            await communicate(message="action=status end=true"),
         )
 
     async def set_text(self) -> None:
         self.texts.type = ItemTextType.action
-        _socket_path_str, script_name = self.value.split(self.delimiter)
-        self.texts.text = script_name
+        self.texts.text = self.value
 
     async def execute(self) -> None:
-        socket_path_str, script_name = self.value.split(self.delimiter)
-        await messages_client(
-            message=f"action=run_script name={script_name} end=true",
-            socket_path=Path(socket_path_str),
-        )
+        script_name = self.value
+        await communicate(message=f"action=run_script name={script_name} end=true")
+
+
+class ItemQuit(Item):
+    item_type = "ItemQuit"
+
+    async def set_text(self) -> None:
+        self.texts.type = ItemTextType.action
+        self.texts.text = "<poweroff> Quit"
+
+    async def execute(self) -> None:
+        raise SystemExit

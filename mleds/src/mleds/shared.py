@@ -13,6 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict
 
 if TYPE_CHECKING:
@@ -20,7 +21,8 @@ if TYPE_CHECKING:
 
 
 class Shared(TypedDict, total=False):
-    server_instance: "Server"
+    server_instance: "Server"  # Store the server instance
+    socket_path: Path | None = None
 
 
 shared = Shared()

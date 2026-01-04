@@ -55,6 +55,7 @@ def parse_args() -> argparse.Namespace:
         "Run raw commands directly without a running server. "
         "Use single dash '-' to read from stdin."
     )
+    oneshot_menu_command_help = "Start mleds with a menu without a running server."
     status_command_help = "Show current server status."
     run_client_command_help = "Start an embedded client."
     stop_client_command_help = "Stop an embedded client."
@@ -80,6 +81,10 @@ def parse_args() -> argparse.Namespace:
     _parser_menu = subparser.add_parser("menu", help=menu_command_help)
     parser_client.add_argument("message")
     parser_oneshot = subparser.add_parser("oneshot", help=oneshot_command_help)
+    _parser_oneshot_menu = subparser.add_parser(
+        "oneshot-menu",
+        help=oneshot_menu_command_help,
+    )
     parser_oneshot.add_argument("message")
     _parser_status = subparser.add_parser(
         "status",
@@ -139,7 +144,7 @@ def check_path_writable(path: Path) -> None:
         sys.exit(1)
 
 
-def main() -> None:  # noqa: C901, PLR0912
+def main() -> None:  # noqa: C901, PLR0912, PLR0915
     """Main program."""
     args = parse_args()
     set_logging_level(args.verbose)
@@ -170,6 +175,13 @@ def main() -> None:  # noqa: C901, PLR0912
                     message=args.message,
                 ),
             )
+    elif args.mode == "oneshot-menu":
+        shared["socket_path"] = None
+        asyncio.run(
+            oneshot_menu_event_loop(
+                configuration=configuration,
+            ),
+        )
     elif args.mode == "client":
         check_path_exists(configuration.socket_path)
         check_path_writable(configuration.socket_path)
@@ -261,9 +273,11 @@ def main() -> None:  # noqa: C901, PLR0912
     elif args.mode == "menu":
         from mleds.menu.main import main_menu  # noqa: PLC0415
 
+        shared["socket_path"] = configuration.socket_path
+
         check_path_exists(configuration.socket_path)
         check_path_writable(configuration.socket_path)
-        asyncio.run(main_menu(socket_path=configuration.socket_path))
+        asyncio.run(main_menu(include_quit=False))
 
 
 async def oneshot(message: str) -> None:
@@ -291,6 +305,13 @@ async def oneshot(message: str) -> None:
 
     for line in response_lines:
         print(line)
+
+
+async def oneshot_menu() -> None:
+    from mleds.menu.main import main_menu  # noqa: PLC0415
+
+    while True:
+        await main_menu(include_quit=True)
 
 
 async def server_event_loop(configuration: Configuration) -> None:
@@ -334,6 +355,24 @@ async def oneshot_event_loop(configuration: Configuration, message: str) -> None
         ),
         oneshot(message),
     )
+
+
+async def oneshot_menu_event_loop(configuration: Configuration) -> None:
+    """Run a server with a menu and exit on menu quit."""
+    shared["server_instance"] = Server(configuration=configuration, oneshot=True)
+    shared["menu_mode"] = "oneshot-menu"
+    try:
+        await asyncio.gather(
+            asyncio.sleep(1),
+            shared["server_instance"].writer(),
+            shared["server_instance"].async_init(
+                include_loads=False,
+                include_resources=True,
+            ),
+            oneshot_menu(),
+        )
+    except SystemExit:
+        return
 
 
 if __name__ == "__main__":
