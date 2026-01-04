@@ -1,8 +1,10 @@
 import asyncio
+from typing import Literal
 
 from mleds.communications import Status, messages_client, parse_status
 from mleds.shared import shared
 from simple_menu.configuration import get_configuration
+from simple_menu.constants import interface_t
 from simple_menu.item.base import ItemTextType
 from simple_menu.item.item import Item
 from simple_menu.item.menu import Menu
@@ -21,10 +23,13 @@ async def communicate(message: str) -> list[str]:
         return response
 
 
-async def main_menu(include_quit: bool) -> None:
+async def main_menu(
+    include_quit: bool,
+    interface: interface_t | Literal["auto"],
+) -> None:
     configuration = get_configuration(
         config_file=None,
-        requested_interface="fzf",
+        requested_interface=interface,
         requested_token_separators=[],
     )
     token_separator = configuration.token_separators[0]

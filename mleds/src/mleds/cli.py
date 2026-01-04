@@ -29,6 +29,7 @@ from mleds.constants import PROGRAM_NAME, PROGRAM_VERSION
 from mleds.exceptions import InvalidConfigurationError
 from mleds.server import Server
 from mleds.shared import shared
+from simple_menu.exceptions import SystemQuit
 
 logger = logging.getLogger(__name__)
 
@@ -177,11 +178,15 @@ def main() -> None:  # noqa: C901, PLR0912, PLR0915
             )
     elif args.mode == "oneshot-menu":
         shared["socket_path"] = None
-        asyncio.run(
-            oneshot_menu_event_loop(
-                configuration=configuration,
-            ),
-        )
+        try:
+            asyncio.run(
+                oneshot_menu_event_loop(
+                    configuration=configuration,
+                ),
+            )
+        except SystemQuit:
+            sys.exit()
+
     elif args.mode == "client":
         check_path_exists(configuration.socket_path)
         check_path_writable(configuration.socket_path)
@@ -277,7 +282,10 @@ def main() -> None:  # noqa: C901, PLR0912, PLR0915
 
         check_path_exists(configuration.socket_path)
         check_path_writable(configuration.socket_path)
-        asyncio.run(main_menu(include_quit=False))
+        try:
+            asyncio.run(main_menu(include_quit=False, interface="auto"))
+        except (SystemQuit, KeyboardInterrupt):
+            sys.exit()
 
 
 async def oneshot(message: str) -> None:
@@ -310,8 +318,11 @@ async def oneshot(message: str) -> None:
 async def oneshot_menu() -> None:
     from mleds.menu.main import main_menu  # noqa: PLC0415
 
-    while True:
-        await main_menu(include_quit=True)
+    try:
+        while True:
+            await main_menu(include_quit=True, interface="fzf")
+    except (SystemQuit, KeyboardInterrupt):
+        sys.exit()
 
 
 async def server_event_loop(configuration: Configuration) -> None:
