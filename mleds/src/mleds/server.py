@@ -291,6 +291,14 @@ class Server:
         new_frames.check()
         if not movie_name:
             raise InvalidConfigurationError("Movie must have a name")
+        if not re.match(r"^[a-zA-Z0-9-_]+$", movie_name):
+            raise InvalidConfigurationError(
+                "Movie can contain only alphanumeric symbols plus _ and -",
+            )
+        if movie_name.lower() == "none":
+            raise InvalidConfigurationError(
+                "Movie name can not be the reserved word 'none'",
+            )
         new_frames_list.append(new_frames)
 
         movie = Movie(name=movie_name)
