@@ -15,6 +15,7 @@
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 
 from mleds.shared import shared
@@ -92,3 +93,113 @@ async def messages_client(message: str, socket_path: Path) -> list[str]:
     writer.close()
     await writer.wait_closed()
     return lines
+
+
+@dataclass
+class Status:
+    available_movies: list[str]
+    available_clients: list[str]
+    available_scripts: list[str]
+    playing_background: str
+    playing_foreground: None | str
+    playing_urgent: list[str]
+    running_clients: list[str]
+    intensity: float
+    socket_path: Path
+    keyboard_device: Path
+    hidraw_device: Path
+
+
+def parse_status(lines: list[str]) -> Status:
+    playing_background: str = next(
+        line.replace("playing_background_movie: ", "")
+        for line in lines
+        if line.startswith("playing_background_movie: ")
+    )
+
+    playing_foreground: str | None = next(
+        line.replace("playing_foreground_movie: ", "")
+        for line in lines
+        if line.startswith("playing_foreground_movie: ")
+    )
+    if playing_foreground == "<none>":
+        playing_foreground = None
+
+    playing_urgent = [
+        movie
+        for movie in next(
+            line.replace("playing_urgent_movies: ", "")
+            for line in lines
+            if line.startswith("playing_urgent_movies: ")
+        ).split(" ")
+        if movie != "<none>"
+    ]
+
+    available_movies = [
+        line.replace("available_movie: ", "")
+        for line in lines
+        if line.startswith("available_movie: ")
+    ]
+
+    available_scripts = [
+        line.replace("available_script: ", "")
+        for line in lines
+        if line.startswith("available_script: ")
+    ]
+
+    available_clients = [
+        line.replace("available_client: ", "")
+        for line in lines
+        if line.startswith("available_client: ")
+    ]
+
+    running_clients = [
+        line.replace("running_client: ", "")
+        for line in lines
+        if line.startswith("running_client: ")
+    ]
+
+    intensity = float(
+        next(
+            line.replace("intensity: ", "")
+            for line in lines
+            if line.startswith("intensity: ")
+        )
+    )
+
+    socket_path = Path(
+        next(
+            line.replace("socket_path: ", "")
+            for line in lines
+            if line.startswith("socket_path: ")
+        )
+    )
+
+    hidraw_device = Path(
+        next(
+            line.replace("hidraw_device: ", "")
+            for line in lines
+            if line.startswith("hidraw_device: ")
+        )
+    )
+
+    keyboard_device = Path(
+        next(
+            line.replace("keyboard_device: ", "")
+            for line in lines
+            if line.startswith("keyboard_device: ")
+        )
+    )
+    return Status(
+        available_movies=available_movies,
+        available_clients=available_clients,
+        available_scripts=available_scripts,
+        playing_background=playing_background,
+        playing_foreground=playing_foreground,
+        playing_urgent=playing_urgent,
+        running_clients=running_clients,
+        intensity=intensity,
+        socket_path=socket_path,
+        hidraw_device=hidraw_device,
+        keyboard_device=keyboard_device,
+    )
