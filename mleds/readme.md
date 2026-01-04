@@ -9,6 +9,7 @@ data.
 ![gif1](https://file.amospalla.es/misc/mleds_sample1.gif)
 ![gif2](https://file.amospalla.es/misc/mleds_sample2.gif)
 ![gif3](https://file.amospalla.es/misc/mleds_sample3.gif)
+![menu](menu.png)
 
 ## Run the program in oneshot mode
 
