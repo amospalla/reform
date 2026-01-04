@@ -18,12 +18,15 @@ import logging
 from pathlib import Path
 
 from mleds.clients.base import Client
+from mleds.constants import Priority
 
 MOVIE_NAME = "hidden_battery"
 logger = logging.getLogger(__name__)
 
 
 class Battery(Client):
+    priority = Priority.urgent
+
     def __init__(self, *args, **kwargs) -> None:  # type:ignore[no-untyped-def]
         self.percentage = 0  # self.get_data()
         self.charging = True
@@ -96,6 +99,6 @@ class Battery(Client):
             "end=true",
             f"action=add_movie name={MOVIE_NAME}",
             f"copy_movie={MOVIE_NAME} repetitions=3 end=true",
-            f"action=play_movie name={MOVIE_NAME} priority=urgent end=true,",
+            f"action=play_movie name={MOVIE_NAME} priority={self.priority} end=true,",
         ]
         return [*frame0, *frame1, *create_movie]

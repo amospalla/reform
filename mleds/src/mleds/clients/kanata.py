@@ -18,12 +18,15 @@ import logging
 import re
 
 from mleds.clients.base import Client
+from mleds.constants import Priority
 
 MOVIE_NAME = "hidden_kanata"
 logger = logging.getLogger(__name__)
 
 
 class Kanata(Client):
+    priority = Priority.background
+
     def __init__(self, *args, **kwargs) -> None:  # type:ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
 
@@ -68,7 +71,7 @@ class Kanata(Client):
                 #
                 "action=play_movie",
                 f"name={MOVIE_NAME}",
-                "priority=background",
+                f"priority={self.priority}",
                 "end=true",
             ]
             await self.send_message(message=message)

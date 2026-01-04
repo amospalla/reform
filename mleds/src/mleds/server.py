@@ -29,6 +29,7 @@ from mleds.constants import (
     KEYBOARD_ROWS,
     PIXELS_PER_FRAME,
     TIMEOUT_DISABLE,
+    Priority,
 )
 from mleds.exceptions import InvalidConfigurationError
 from mleds.movie import (
@@ -336,6 +337,10 @@ class Server:
         if priority not in {"background", "foreground", "urgent"}:
             raise InvalidConfigurationError(f"Invalid priority {priority}")
 
+        await self.stop_movies(Priority[priority])
+
+    async def stop_movies(self, priority: Priority) -> None:
+        """Stop all movies in the given priority."""
         async with scheduler_lock:
             await self.movie_scheduler(
                 notify_writer=True,
@@ -657,6 +662,10 @@ class Server:
             )
         task.cancel()  # type:ignore[attr-defined]
         self.clients[name]["task"] = None
+
+        match priority := self.clients[name]["klass"].priority:
+            case Priority.background | Priority.foreground:
+                await self.stop_movies(priority)
 
         return ["ok"]
 

@@ -18,6 +18,8 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING
 
+from mleds.constants import Priority
+
 if TYPE_CHECKING:
     from mleds.configuration import Configuration
     from mleds.server import ClientItem, Server
@@ -26,6 +28,8 @@ logger = logging.getLogger(__name__)
 
 
 class Client:
+    priority: Priority
+
     def __init__(self, server: "Server", configuration: "Configuration") -> None:
         self.server = server
         self.configuration = configuration

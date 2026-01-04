@@ -13,6 +13,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import enum
+
 PROGRAM_NAME = "mleds"
 HEX_COLOR_LENGTH = 6
 KEYBOARD_ROWS = 6
@@ -24,3 +26,9 @@ NO_TIMEOUT = 0.0
 TIMEOUT_DISABLE = -1.0
 DEFAULT_FRAME_DURATION = NO_TIMEOUT
 PROGRAM_VERSION = "0.0.1"
+
+
+class Priority(enum.StrEnum):
+    background = "background"
+    foreground = "foreground"
+    urgent = "urgent"

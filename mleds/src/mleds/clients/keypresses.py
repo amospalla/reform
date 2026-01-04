@@ -18,7 +18,7 @@ import logging
 from typing import TypedDict
 
 from mleds.clients.base import Client
-from mleds.constants import KEYBOARD_COLUMNS, KEYBOARD_ROWS
+from mleds.constants import KEYBOARD_COLUMNS, KEYBOARD_ROWS, Priority
 from mleds.read_keyboard import InputEventGenerator, evdev_events
 
 MOVIE_NAME = "hidden_keypresses"
@@ -40,6 +40,7 @@ class Colors(TypedDict):
 class KeyPresses(Client):
     def __init__(self, *args, **kwargs) -> None:  # type:ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
+        type(self).priority = Priority[self.configuration.keypresses_priority]
         self.keys = [Key() for _ in range(KEYBOARD_COLUMNS * KEYBOARD_ROWS)]
         self.key_mappings: dict[str, list[Key]] = {}
 
