@@ -538,20 +538,28 @@ class Server:
         if self.slot.background:
             playing_background = self.slot.background.movie.name
         else:
-            playing_background = "none"
+            playing_background = "<none>"
         response.append(f"playing_background_movie: {playing_background}")
-        if self.slot.foreground:
-            playing_foreground = self.slot.foreground.movie.name
+        if self.slot.playing is not None and self.slot.playing.priority == "foreground":
+            playing_foreground = self.slot.playing.movie.name
         else:
-            playing_foreground = "none"
+            playing_foreground = "<none>"
         response.append(f"playing_foreground_movie: {playing_foreground}")
+
+        playing_urgents: list[str] = []
+
+        if self.slot.playing is not None:
+            if self.slot.playing.priority == "urgent":
+                playing_urgents.append(self.slot.playing.movie.name)
         if self.slot.urgents:
-            playing_urgents = " ".join(
-                [playing.movie.name for playing in self.slot.urgents],
+            playing_urgents.extend(
+                [playing.movie.name for playing in self.slot.urgents]
             )
-        else:
-            playing_urgents = "none"
-        response.append(f"playing_urgent_movies: {playing_urgents}")
+        if not playing_urgents:
+            playing_urgents.append("<none>")
+        playing_urgents_str = " ".join(playing_urgents)
+
+        response.append(f"playing_urgent_movies: {playing_urgents_str}")
         response.extend(
             [
                 f"running_client: {name}"
