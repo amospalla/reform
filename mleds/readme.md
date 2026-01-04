@@ -10,7 +10,19 @@ data.
 ![gif2](https://file.amospalla.es/misc/mleds_sample2.gif)
 ![gif3](https://file.amospalla.es/misc/mleds_sample3.gif)
 
-## Show me the code
+## Run the program in oneshot mode
+
+The program is tailored to run in daemon mode and be controlled with the client, still
+there is a oneshot mode that allows to easily run it. Examples of running oneshot mode:
+
+Oneshot mode with a menu interface (requires fzf to be available). Use cursors, enter
+and escape keys to navigate the menu and activate items:
+
+```sh
+wget -O mleds https://github.com/amospalla/reform/raw/refs/heads/main/mleds/mleds
+chmod 0755 mleds
+sudo ./mleds oneshot-menu
+```
 
 Oneshot mode with keypresses and battery clients and matrix rain movie on background
 (try using the keyboard with this one):
@@ -47,13 +59,19 @@ List available movies on oneshot mode:
 
 The server has three movie queues:
 
-- background: it has one or no movie. Enqueuing in _background_ replaces the previous one.
-- foreground: it has one or no movie.Enqueuing in _foreground_ replaces the previous one.
+- background: it has one movie.
+- foreground: it has one or no movie.
 - urgent: it may have an unlimited number of movies.
 
-All movies put into _urgent_ queue are played serially one after another, in the order
-these have been enqueued. Once a movie in this queue has ended it is removed.
-When there are no more _urgent_ movies, then the _background_ movie is played, in loop.
+The movie on the _background_ queue plays in loop, except if there are movies on the
+_foreground_ or _urgent_ queues, in this situation the movie on _background_ queue
+pauses until _foreground_ and _urgent_ queues end playing.
+
+The movie on the _foreground_ queue plays once and then it is removed from the queue.
+Playing a movie on the _urgent_ queue also clears the _foreground_ queue.
+
+Movies in _urgent_ queue are played serially one after another, in the order these have
+been enqueued and finally are removed.
 
 A unix socket file is created where commands can be sent. This allows modifying the
 server behaviour like add, start or stop playing movies, start or stop embedded clients
@@ -63,9 +81,6 @@ scripted external client would do, creating frames on the go and playing them, e
 that bypasses the need to open the socket file.
 
 ### Movie
-
-A movie in _background_ (if any) plays in loop, forever. If _urgent_ or _foreground_
-movies are enqueued, once they end, the _background_ movie will resume where it was left.
 
 Each key is understood as a pixel, that can be shown with a color.
 
@@ -86,6 +101,8 @@ have set.
 - list_scripts: show all available scripts on the server.
 - run_script: run a named script.
 - run_client: run a named client.
+- stop_movies: remove movies from a queue.
+- status: show server running status.
 
 Commands are read by:
 
@@ -110,18 +127,23 @@ couple of example script clients.
 - `mleds oneshot`: runs the specified commands and exit, without the need to spawn a
   server previously. Has the same interface as the _client_ command, it accepts a literal
   string or reading from stdin. Does not read _load.d_ neither _scripts.d_ folders.
+- `mleds oneshot-menu`: runs in oneshot mode with a user interface.
+- `mleds menu`: opens a menu which operates in client mode.
 - `mleds status`: show server running status.
 - `mleds play_movie`: play a movie.
-- `mleds run_client|stop_client`: start or stop a client. Available clients are
-  _keypresses_, _battery_ and _kanata_.
-- `mleds run_script|run_client|stop_client|set_intensity` shortcuts to
-  sending these commands with the `mleds client "action=<my_action> ... end=true"`.
+- `mleds stop_movie`: remove all the movies on a queue.
+- `mleds run_client|stop_client`: start or stop a client. Available clients:
+  - _keypresses_
+  - _battery_
+  - _kanata_
+- `mleds run_script`: run a script available on the server.
+- `mleds set_intensity`: set the leds brightness.
 
 ## Install
 
 Client does not need to run under the same user as the server. Only thing to take into
 consideration is that the server needs write permissions to the hidraw device, and that
-the _keypresses_ client need to be run under an user with read permissions to the
+the _keypresses_ client needs to be run under an user with read permissions to the
 keyboard device. Also, when server and client are not running within the same user, it
 may be needed to adjust socket_path, socket_user, socket_group and or socket_perms in
 configuration file for client and server.
@@ -150,6 +172,16 @@ There are 3 embedded clients on the program:
 - battery: shows the battery status at given intervals.
 - kanata: sets the colour leds for each kanata layer.
 - keypresses: gives feedback for the keys being pressed.
+
+## Menu
+
+Both `menu` and `oneshot-menu` commands show a menu to the user.
+
+There are two available interfaces, rofi or fzf. `menu` command will try to run rofi if
+posible, else it will try with fzf. With rofi it is recommended to have a monospaced
+font, else it is suggested to force fzf mode by running `INTERFACE=fzf mleds menu`.
+
+`oneshot-menu` will always run using fzf.
 
 ## FAQ
 
