@@ -1,8 +1,8 @@
 # hidraw device where mleds sends commands, it is automatically detected.
 # hidraw_device = "/dev/hidraw0"
 
-# keyboard device where "keypresses" client reads events from. It is automatically
-# detected.
+# keyboard device where "keypresses" and "tetris" clients read events from.
+# It is automatically detected if not specified.
 # keyboard_device = "/dev/input/event0"
 
 # Path where the server creates a socket. By default when running under root it is set
@@ -120,6 +120,13 @@
 #     "16 15",
 #     "6 5",
 # ]
+
+# Specify the 4 tetris keys in this order:
+# "move left", "rotate", "move down", "move right".
+# tetris_keys = ["KEY_LEFT", "KEY_UP", "KEY_DOWN", "KEY_RIGHT"]
+# tetris_rotate = false
+# tetris_speed = 2.0
+# tetris_speed_increases = true
 
 # kanata_host = "localhost"
 # kanata_port = 3333

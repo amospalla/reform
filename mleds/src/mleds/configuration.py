@@ -138,6 +138,13 @@ default_kanata_configuration = {
     "kanata_layers": {},
 }
 
+default_tetris = {
+    "tetris_keys": ["KEY_UP", "KEY_RIGHT", "KEY_LEFT", "KEY_DOWN"],
+    "tetris_rotate": False,
+    "tetris_speed": 2.0,
+    "tetris_speed_increases": True,
+}
+
 
 @dataclasses.dataclass
 class Configuration:
@@ -162,6 +169,10 @@ class Configuration:
     kanata_host: str
     kanata_port: int
     kanata_layers: dict[str, list[str]]
+    tetris_keys: list[str]
+    tetris_rotate: bool
+    tetris_speed: float
+    tetris_speed_increases: bool
 
 
 def configuration_dir_paths() -> list[Path]:
@@ -247,6 +258,10 @@ def get_configuration(  # noqa: C901, PLR0912, PLR0915
         if k not in data:
             data[k] = v
 
+    for k, v in default_tetris.items():
+        if k not in data:
+            data[k] = v
+
     data["battery_notification_events"] = [
         (int(event.split()[0]), int(event.split()[1]))
         for event in data["battery_notification_events"]
@@ -320,6 +335,10 @@ def get_configuration(  # noqa: C901, PLR0912, PLR0915
         kanata_host=data["kanata_host"],
         kanata_port=data["kanata_port"],
         kanata_layers=data["kanata_layers"],
+        tetris_rotate=data["tetris_rotate"],
+        tetris_keys=data["tetris_keys"],
+        tetris_speed=data["tetris_speed"],
+        tetris_speed_increases=data["tetris_speed_increases"],
     )
 
     logger.info("[Configuration] %s.", configuration)
