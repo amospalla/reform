@@ -1,0 +1,1220 @@
+#!/usr/bin/env python3
+
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright (c) 2026 Jordi Marqués Triviño
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation version 3.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+
+import argparse
+import enum
+import logging
+import re
+import sys
+import textwrap
+import time
+import unicodedata
+from abc import ABC, abstractmethod
+from collections.abc import Sequence
+from pathlib import Path
+from typing import Literal
+
+type CharacterT = tuple[tuple[bool, ...], ...]
+type RGBT = tuple[int, int, int]
+
+
+class HidrawDeviceNotFoundError(Exception):
+    pass
+
+
+class InvalidSizeError(Exception):
+    pass
+
+
+class FontNotFoundError(Exception):
+    pass
+
+
+class InvalidTokenError(Exception):
+    pass
+
+
+class Color(enum.Enum):
+    red = (100, 0, 0)
+    green = (0, 255, 0)
+    blue = (0, 80, 255)
+    black = (0, 0, 0)
+    white = (100, 150, 100)
+    orange = (140, 40, 0)
+    pink = (160, 0, 80)
+    violet = (128, 0, 255)
+    yellow = (255, 255, 0)
+    purple = (100, 0, 100)
+
+
+KNOWN_COLORS = ", ".join(c.name for c in Color)
+PROGRAM_VERSION = "0.0.1"
+PROGRAM_NAME = "reform-leds"
+HIDRAW_RE_PATTERNS = (r"^HID_NAME=MNT Pocket Reform Input.*",)
+PIXEL_DOT_TRUE = "O"
+PIXEL_DOT_FALSE = "."
+COLOR_PATTERN_HEX = re.compile(r"^#?([a-fA-F0-9]{6})$")
+COLOR_PATTERN_DEC = re.compile(r"^\(?([0-9]{1,3}),([0-9]{1,3}),([0-9]{1,3})\)?$")
+COLOR_PATTERN_DOT = re.compile(rf"^[{PIXEL_DOT_TRUE}{PIXEL_DOT_FALSE}]+$")
+FONT_HEADER_PATTERN = re.compile(r"^size ([0-9]+x[0-9]+) spacing ([0-9]+),([0-9]+)$")
+FONT_SIZE_PATTERN = re.compile(r"^[0-9]+x[0-9]+$")
+SYMBOL_HEADER_PATTERN = re.compile(r"^size ([0-9]+x[0-9]+) code (.)$")
+KEYBOARD_WIDTH = 12
+KEYBOARD_HEIGHT = 6
+KEYBOARD_PIXELS = KEYBOARD_WIDTH * KEYBOARD_HEIGHT
+OLED_WIDTH = 128
+OLED_HEIGHT = 32
+OLED_PIXELS = OLED_WIDTH * OLED_HEIGHT
+DEFAULT_COLOR = Color.purple
+FALLBACK_CHARACTER = "?"
+READ_FROM_STDIN = Path("/")
+MIN_RGB_VALUE = 0
+MAX_RGB_VALUE = 255
+FONT_SPACING_UNSET = -10
+FONT_DEFAULT = "5x7"
+
+
+logger = logging.getLogger(__name__)
+
+
+########################################################################################
+# Arguments parsing ####################################################################
+########################################################################################
+class Log:
+    LEVELS = ("critical", "error", "warning", "info", "debug")
+
+    @staticmethod
+    def set_logging_level(level: str) -> None:
+        logging.basicConfig(level=logging.getLevelNamesMapping()[level.upper()])
+
+
+def argparse_color_parser(value: str) -> RGBT:
+    """Parser for input color."""
+    if (color_tuple := Pixels.token2rgb(value)) is None:
+        raise argparse.ArgumentTypeError(f"invalid color: {value}")
+    return color_tuple
+
+
+def argparse_font_size(value: str) -> str:
+    """Parser for input font size."""
+    if not re.match(FONT_SIZE_PATTERN, value):
+        raise argparse.ArgumentTypeError(f'invalid font size: "{value}"')
+    return value
+
+
+def argparse_file_path(value: str) -> Path:
+    """Parser for Path object that must exist."""
+    if (file_path := Path(value)).exists():
+        return file_path
+    raise argparse.ArgumentTypeError(f'invalid file path: "{value}"')
+
+
+def argparse_file_path_or_stdin(value: str) -> Path:
+    """Parser for Path object that must exist with fallback to stdin.
+
+    If user input equals to "-", return a path for the root folder, which will be later
+    iterpreted as the user requested to read from stdin.
+    """
+    file_path = Path(value)
+    if file_path.exists():
+        return file_path
+    elif value == "-":
+        return READ_FROM_STDIN
+    raise argparse.ArgumentTypeError(f'invalid file path: "{value}"')
+
+
+def argparse_add_file_argument(subparser: argparse.ArgumentParser) -> None:
+    """Add a 'file' argument to a parser."""
+    subparser.add_argument(
+        "file",
+        type=argparse_file_path_or_stdin,
+        help='file path or "-" (stdin)',
+    )
+
+
+def argparse_add_output_argument(subparser: argparse.ArgumentParser) -> None:
+    """Add an 'output' argument to a parser."""
+    subparser.add_argument(
+        "output",
+        choices=["keyboard", "oled", "stdout"],
+        help="device to operate with",
+    )
+
+
+def argparse_add_hidraw_path_argument(subparser: argparse.ArgumentParser) -> None:
+    """Add a '--hidraw' argument to a parser."""
+    subparser.add_argument(
+        "--hidraw",
+        type=argparse_file_path,
+        help="override hidraw device path autodetection",
+    )
+
+
+def argparse_add_color_argument(subparser: argparse.ArgumentParser) -> None:
+    """Add a '-c|--color' argument to a parser."""
+    subparser.add_argument(
+        "-c",
+        "--color",
+        type=argparse_color_parser,
+        default=DEFAULT_COLOR.value,
+        help=(
+            f'format: "#0000ff", "0,0,255" or "green" (default: {DEFAULT_COLOR.name})'
+        ),
+    )
+
+
+def argparse_get_args() -> argparse.Namespace:
+    """Return main program argument parser."""
+    program_description = (
+        "Set keyboard-leds/oled on a MNT Pocket Reform computer. "
+        f" Version {PROGRAM_VERSION}."
+    )
+
+    program_epilog = f"""
+    Examples:
+       {PROGRAM_NAME} fill keyboard --color purple
+       {PROGRAM_NAME} draw keyboard text-image.txt
+       magick -size 128x32 pattern:crosshatch -depth 1 gray:- | {PROGRAM_NAME} bitmap oled 1bit -
+       magick -size  12x6  pattern:crosshatch -depth 8  rgb:- | {PROGRAM_NAME} bitmap keyboard rgb -
+       echo -e "bat1 " | {PROGRAM_NAME} text oled -
+
+    Specific command help:
+       {PROGRAM_NAME} bitmap --help
+       {PROGRAM_NAME} draw --help
+       {PROGRAM_NAME} fill --help
+       {PROGRAM_NAME} text --help
+
+    Some commands and file format accept colors.
+    Colors can be specified in any of these formats: "green", "#00FF00" or "0,255,0".
+
+    List of known name colors: {KNOWN_COLORS}.
+    """  # noqa: E501
+
+    parser = argparse.ArgumentParser(
+        prog=PROGRAM_NAME,
+        description=program_description,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=textwrap.dedent(program_epilog),
+    )
+
+    parser.add_argument(
+        "-V",
+        "--version",
+        action="version",
+        version=f"{PROGRAM_NAME} {PROGRAM_VERSION}",
+    )
+
+    parser.add_argument("-l", "--log-level", choices=Log.LEVELS, default="WARNING")
+
+    subparsers = parser.add_subparsers(
+        dest="command",
+        required=True,
+        title="Available commands",
+    )
+
+    # Fill #############################################################################
+    epilog = f"""
+    Examples:
+       {PROGRAM_NAME} fill keyboard --color green
+       {PROGRAM_NAME} fill keyboard --color 0,200,0
+       {PROGRAM_NAME} fill keyboard --color "#00FF00"
+       {PROGRAM_NAME} fill keyboard --color black
+       {PROGRAM_NAME} fill oled --color white
+       {PROGRAM_NAME} fill oled --color black
+
+    Because the OLED display is black/white any colour sets it to white and
+    only black clears it.
+    """
+    subparser_fill = subparsers.add_parser(
+        name="fill",
+        help="fill with a color",
+        description="Fill with a color.",
+        epilog=textwrap.dedent(epilog),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    argparse_add_output_argument(subparser_fill)
+    argparse_add_color_argument(subparser_fill)
+    argparse_add_hidraw_path_argument(subparser_fill)
+
+    # Draw #############################################################################
+    epilog = f"""
+    Examples:
+        {PROGRAM_NAME} draw oled my_file.txt
+        {PROGRAM_NAME} draw keyboard - < my_file.txt
+        echo "
+        ....O..O....
+        ...O.OO.O...
+        ...O....O.. #ff00ff
+        ....O..O....
+        .....OO.....
+        ............" | {PROGRAM_NAME} draw keyboard -
+
+    File format:
+        The file must contain pixels in any of these formats, which can be mixed:
+        - Named known color.
+        - Boolean, where "{PIXEL_DOT_TRUE}" character means unset and "{PIXEL_DOT_FALSE}" means unset.
+        - Hexadecimal: "#00FF00"
+        - Decimal RGB components: "(0,255,0)"
+
+    Because the OLED diplay is black and white, any color (except black) sets the pixels
+    and only the black color unsets them.
+    """  # noqa: E501
+    subparser_draw = subparsers.add_parser(
+        "draw",
+        help="put an image from a text file",
+        description="Put an image from a text file.",
+        epilog=textwrap.dedent(epilog),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    argparse_add_output_argument(subparser_draw)
+    argparse_add_color_argument(subparser_draw)
+    argparse_add_file_argument(subparser_draw)
+    argparse_add_hidraw_path_argument(subparser_draw)
+
+    # Bitmap ###########################################################################
+    epilog = f"""
+    Examples:
+       magick -size 128x32 pattern:bricks     -depth 1 gray:- | {PROGRAM_NAME} bitmap oled 1bit -
+       magick -size 128x32 pattern:crosshatch -depth 8  rgb:- | {PROGRAM_NAME} bitmap oled rgb -
+       magick -size  12x6  pattern:crosshatch -depth 8  rgb:- | {PROGRAM_NAME} bitmap keyboard rgb -
+       magick img.jpg -resize 128x32! -depth 1 gray:- | {PROGRAM_NAME} bitmap oled 1bit -
+    """  # noqa: E501
+    subparser_bitmap = subparsers.add_parser(
+        "bitmap",
+        help="put an image from a binary bitmap file",
+        description="Put an image from a binary bitmap file.",
+        epilog=textwrap.dedent(epilog),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    argparse_add_output_argument(subparser_bitmap)
+    subparser_bitmap.add_argument(
+        "format",
+        choices=["1bit", "rgb"],
+        help='bitmap file format: "1bit" or 8 bit color depth "rgb"',
+    )
+    argparse_add_color_argument(subparser_bitmap)
+    argparse_add_hidraw_path_argument(subparser_bitmap)
+    argparse_add_file_argument(subparser_bitmap)
+
+    # Text #############################################################################
+    epilog = f"""
+    Examples:
+       {PROGRAM_NAME} text oled my-text-file.txt
+       echo "Hello" | {PROGRAM_NAME} text oled -
+       echo -e "bat1  \\nbat2  \\nbat3  \\nbat4  " | {PROGRAM_NAME} text oled -
+       echo "󰁹󰂂󰂁󰂀󰁿󰁾󰁼󰁻󰁺󰂎" | {PROGRAM_NAME} text oled --font-size 10x14 -
+
+    User supplied files.
+        User can supply a font file or a symbols file. These allow for adding a whole
+        font or just add/override specific character codes.
+
+        The file format is the same as the include in the own program source code.
+    """
+    subparser_text = subparsers.add_parser(
+        "text",
+        help="put text from a file",
+        description="Put text from a file.",
+        epilog=textwrap.dedent(epilog),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    argparse_add_output_argument(subparser_text)
+    argparse_add_color_argument(subparser_text)
+    subparser_text.add_argument(
+        "--font-file",
+        type=argparse_file_path,
+        help="user supplied file with a font definition",
+    )
+    subparser_text.add_argument(
+        "--symbols-file",
+        type=argparse_file_path,
+        help="user supplied file with symbol definitions",
+    )
+    subparser_text.add_argument(
+        "--font-size",
+        default=FONT_DEFAULT,
+        type=argparse_font_size,
+        help="embedded font sizes: 5x5, 5x7, 5x9, 8x14 and 10x14",
+    )
+    subparser_text.add_argument(
+        "--font-spacing-vertical",
+        type=int,
+        default=FONT_SPACING_UNSET,
+        help="override vertical font spacing",
+    )
+    subparser_text.add_argument(
+        "--font-spacing-horizontal",
+        type=int,
+        default=FONT_SPACING_UNSET,
+        help="override horizontal font spacing",
+    )
+    subparser_text.add_argument(
+        "--scroll",
+        choices=["vertical", "horizontal", "none"],
+        default="none",
+        help='scroll text in the specified direction: "horizontal", "vertical"',
+    )
+    subparser_text.add_argument(
+        "--scroll-length",
+        type=int,
+        default=3,
+        help="pixels to scroll by, set to a high value to move faster (default=3)",
+    )
+    subparser_text.add_argument(
+        "--scroll-repeat",
+        type=int,
+        default=2,
+        help="number of times to scroll, set to -1 to never stop scroll (default=2)",
+    )
+    subparser_text.add_argument(
+        "--scroll-sleep",
+        type=float,
+        default=0.2,
+        help="seconds to wait between scroll movements (default=0.2)",
+    )
+    argparse_add_hidraw_path_argument(subparser_text)
+    argparse_add_file_argument(subparser_text)
+
+    return parser.parse_args()
+
+
+########################################################################################
+# Abstractions #########################################################################
+########################################################################################
+class Pixels:
+    """List of pixels and conversions between them."""
+
+    def __init__(
+        self,
+        image_format: Literal["1bit", "rgb"],
+        boolean: list[bool] | None = None,
+        rgb: list[RGBT] | None = None,
+        default_color: RGBT = Color.green.value,
+    ) -> None:
+        self._boolean_pixels = boolean or []
+        self._rgb_pixels = rgb or []
+        self.default_color = default_color
+        self.format = image_format
+
+    @staticmethod
+    def token2rgb(token: str) -> RGBT | None:
+        """Return a color from a text.
+
+        Format:
+            - "#00ff00".
+            - "00ff00".
+            - "0,255,0".
+            - "(0,255,0)".
+            - "green".
+        """
+        # Named color.
+        try:
+            return (
+                Color[token.lower()].value[0],
+                Color[token.lower()].value[1],
+                Color[token.lower()].value[2],
+            )
+        except KeyError:
+            pass
+        # Hexadecimal format.
+        if match := re.match(COLOR_PATTERN_HEX, token):
+            return (
+                int(match.groups()[0][0:2], 16),
+                int(match.groups()[0][2:4], 16),
+                int(match.groups()[0][4:6], 16),
+            )
+        # Comma separated integers format.
+        if match := re.match(COLOR_PATTERN_DEC, token):
+            colors = (
+                int(match.groups()[0]),
+                int(match.groups()[1]),
+                int(match.groups()[2]),
+            )
+            if all(MIN_RGB_VALUE <= i <= MAX_RGB_VALUE for i in colors):
+                return colors
+        return None
+
+    @staticmethod
+    def tokens2rgb(token: str, color: RGBT) -> list[RGBT] | None:
+        """Return a list of color tuples from a text.
+
+        Format: Any combination of characters defined in PIXEL_DOT_TRUE and
+        PIXEL_DOT_FALSE.
+        """
+        if re.match(COLOR_PATTERN_DOT, token):
+            return [
+                color if character == PIXEL_DOT_TRUE else Color.black.value
+                for character in token
+            ]
+        return None
+
+    @staticmethod
+    def pixels_from_string(default_color: RGBT, string: str) -> list[RGBT]:
+        """Return a list of pixels from a mixed string format."""
+        tokens = string.split()
+        pixels: list[RGBT] = []
+        for token in tokens:
+            if (tuple_rgb := Pixels.token2rgb(token)) is not None:
+                pixels.append(tuple_rgb)
+            elif (tuples_rgb := Pixels.tokens2rgb(token, default_color)) is not None:
+                pixels.extend(tuples_rgb)
+            else:
+                msg = (
+                    f'Invalid token "{token}.", valid format examples: '
+                    '"green", "#00ff00","0,255,0", ".", "O"'
+                )
+                logger.error(msg)
+                raise InvalidTokenError(msg)
+        return pixels
+
+    @property
+    def boolean(self) -> list[bool]:
+        match self.format:
+            case "1bit":
+                # User asks for booleans and data is stored as booleans. Return as-is.
+                return self._boolean_pixels
+            case "rgb":
+                # User asks for booleans and data is stored as rgb. Convert.
+                return [
+                    any(value for value in color_tuple)
+                    for color_tuple in self._rgb_pixels
+                ]
+
+    @property
+    def rgb(self) -> list[RGBT]:
+        match self.format:
+            case "1bit":
+                # User asks for 1bit and data is stored as rgb. Convert.
+                return [
+                    self.default_color if value else Color.black.value
+                    for value in self._boolean_pixels
+                ]
+            case "rgb":
+                # User asks for rgb and data is stored as rgb. Return as-is.
+                return self._rgb_pixels
+
+    def __len__(self) -> int:
+        match self.format:
+            case "1bit":
+                return len(self._boolean_pixels)
+            case "rgb":
+                return len(self._rgb_pixels)
+
+
+class Output(ABC):
+    width: int
+    height: int
+    name: str
+
+    def __init__(self, hidraw_path: Path | None = None) -> None:
+        self.hidraw = hidraw_path or self._get_hidraw_path()
+
+    def _get_hidraw_path(self) -> Path:
+        """Return the hidraw device path for this MNT Pocket Reform machine.
+
+        Do not expect there is an UDEV rule setting a known path for the device,
+        instead search actively files for it.
+        """
+        for hidraw_device_path in Path("/sys/class/hidraw/").glob("*"):
+            with (hidraw_device_path / "device/uevent").open("r") as f:
+                for hidraw_re_pattern in HIDRAW_RE_PATTERNS:
+                    if re.search(hidraw_re_pattern, f.read(), re.MULTILINE):
+                        return Path("/dev/" + hidraw_device_path.name)
+        logger.error(
+            "Hidraw device not found, please use --hidraw.",
+        )
+        raise HidrawDeviceNotFoundError
+
+    def write(self, pixels: Pixels) -> None:
+        """Send the input list of pixels to the output."""
+        if len(pixels) != self.height * self.width:
+            logger.error(
+                'The output "%s" has a matrix size of "%s" but received "%s" pixels.',
+                self.name,
+                self.width * self.height,
+                len(pixels),
+            )
+            raise InvalidSizeError
+        self._write(pixels)
+
+    @abstractmethod
+    def fill(self, color: RGBT) -> None:
+        pass
+
+    @abstractmethod
+    def _write(self, pixels: Pixels) -> None:
+        pass
+
+
+class KeyboardLeds(Output):
+    width = KEYBOARD_WIDTH
+    height = KEYBOARD_HEIGHT
+    name = "Keyboard leds"
+
+    def fill(self, color: RGBT) -> None:
+        # Note: lrgb hidraw command does also fill the keyboard leds.
+        # with self.hidraw.open("wb") as f: f.write(b"xLRGB" + bytes(RGBT))
+        self.write(
+            Pixels(
+                image_format="rgb",
+                rgb=[color] * self.width * self.height,
+            ),
+        )
+
+    def _write(self, pixels: Pixels) -> None:
+        """Send XRGB command."""
+        rgb_pixels = pixels.rgb
+        for row_number in range(self.height):
+            with self.hidraw.open("wb") as k:
+                message = [row_number]
+                row_colors = rgb_pixels[
+                    row_number * self.width : (row_number + 1) * self.width
+                ]
+                if row_number == self.height - 1:
+                    # Fix: mouse buttons do not alineate with matrix position.
+                    # On last row, right pointer buttons are read from columns number 10
+                    # and 11, but visually these rows are 8 and 9.
+                    row_colors[9:12] = row_colors[7:9]
+                for rgb in row_colors:
+                    # Fix: Pocket hidraw reads BGR instead of RGB.
+                    message.extend(reversed(rgb))
+                k.write(b"xXRGB" + bytes(message))
+
+
+class OledDisplay(Output):
+    width = OLED_WIDTH
+    height = OLED_HEIGHT
+    name = "OLED display"
+    wbio_pages = 4
+    wbio_chunk_size = 43
+
+    def fill(self, color: RGBT) -> None:
+        value = any(i for i in color)
+        self.write(
+            Pixels(
+                image_format="1bit",
+                boolean=[value] * self.width * self.height,
+            ),
+        )
+
+    def _write(self, pixels: Pixels) -> None:
+        """Send a 128x32 boolean matrix to the keyboard OLED using WBIO command.
+
+        bytes:
+            - 0-4: "xWBIO"
+            - 5:   page (0-3)
+            - 6:   column (0-127)
+            - 7+:  data
+        """
+        booleans_wbio_format = self._wbio_oled_format(pixels.boolean)
+        with self.hidraw.open("wb") as f:
+            for page in range(self.wbio_pages):
+                for col in range(0, self.width, self.wbio_chunk_size):
+                    # First two page chunks are size 43, third is size 42.
+                    chunk_size = min(self.wbio_chunk_size, self.width - col)
+                    position = page * self.width + col
+                    msg = (
+                        b"xWBIO"
+                        + bytes([page, col])
+                        + booleans_wbio_format[position : position + chunk_size]
+                    )
+                    _ = f.write(msg)
+                    f.flush()  # Force send.
+
+    def _wbio_oled_format(self, booleans: list[bool]) -> bytearray:
+        """Return the flat pixel list into the expected hidraw WBIO format.
+
+        Oled matrix is 128x32 pixels.
+
+        It is divided in 4 pages of 8 pixels tall each one:
+
+        xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx -> Page 1 (128x8 pixels)
+        xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx -> Page 2 (128x8 pixels)
+        xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx -> Page 3 (128x8 pixels)
+        xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx -> Page 4 (128x8 pixels)
+
+        Each byte encodes a vertical strip of 8 pixels.
+
+        First byte of the message fills first column of the first page (8 pixels).
+
+        Second byte of the message fills second column of the first page (8 pixels), and
+        so on.
+
+        For each page (0..3):
+        for each column (0..127):
+            - Gather the 8 pixels stacked vertically in that column/page into 1 byte.
+            - Store the byte at buf[page * 128 + col]
+        """
+        buffer = bytearray(self.wbio_pages * self.width)
+        for page in range(self.wbio_pages):
+            for col in range(self.width):
+                byte = 0  # Current column byte value
+                for bit in range(8):
+                    row = page * 8 + bit
+                    if booleans[row * self.width + col]:
+                        byte |= 1 << bit  # Set the byte's bit position to 1.
+                buffer[page * self.width + col] = byte
+        return buffer
+
+
+class Stdout(Output):
+    width = OLED_WIDTH
+    height = OLED_HEIGHT
+    name = "debug"
+
+    def fill(self, color: RGBT) -> None:
+        value = any(i for i in color)
+        self.write(
+            Pixels(
+                image_format="1bit",
+                boolean=[value] * self.width * self.height,
+            ),
+        )
+
+    def _write(self, pixels: Pixels) -> None:
+        """Send a 128x32 boolean matrix to stdout."""
+        print(
+            "\n".join(
+                tuple(
+                    "".join(
+                        tuple(
+                            PIXEL_DOT_TRUE if value else PIXEL_DOT_FALSE
+                            for value in pixels.boolean[
+                                self.width * row : self.width * (row + 1)
+                            ]
+                        ),
+                    )
+                    for row in range(self.height)
+                ),
+            ),
+        )
+
+
+class Text:
+    def __init__(
+        self,
+        font_size: str,
+        font_spacing: tuple[int, int] | None = None,
+    ) -> None:
+        self.font_size = font_size
+        # Character data has one extra width and height pixel.
+        self.character_width = int(font_size.split("x", maxsplit=1)[0]) + 1
+        self.character_height = int(font_size.split("x")[1]) + 1
+        self.spacing: tuple[int, int] = font_spacing or (
+            FONT_SPACING_UNSET,
+            FONT_SPACING_UNSET,
+        )
+        self.build_font_character_map()
+        self.build_symbols_character_map()
+
+    def build_font_character_map(self) -> None:
+        """Builds the character map for a font size."""
+        found = False
+        font_defined_spacing = (0, 0)  # Initialize
+        font_lines: list[str] = []  # Initialize
+        for font in FONTS:
+            # Iterate over fonts list until find one with the specified font size.
+            font_lines = [
+                line
+                for line in font.splitlines()
+                if line.strip() and not line.startswith("# ")
+            ]
+            if match := re.match(FONT_HEADER_PATTERN, font_lines[0]):
+                font_size = match.groups()[0]
+                font_defined_spacing = (
+                    int(match.groups()[1]),
+                    int(match.groups()[2]),
+                )
+                if self.font_size == font_size:
+                    found = True
+                    break
+
+        if not found:
+            logger.error(
+                'Font "%s" is not available.',
+                self.font_size,
+            )
+            raise FontNotFoundError(f'Font "{self.font_size}" not found')
+
+        # If the user does not ask for a specific font size, use default from font
+        # definition.
+        if self.spacing[0] == FONT_SPACING_UNSET:
+            self.spacing = (int(font_defined_spacing[0]), self.spacing[1])
+        if self.spacing[1] == FONT_SPACING_UNSET:
+            self.spacing = (self.spacing[0], int(font_defined_spacing[1]))
+
+        # Read  each character from font definition and build it into self.character_map
+        character_map_raw = font_lines[2:]
+        character_map: dict[str, tuple[tuple[bool, ...], ...]] = {}
+        # A Character code has two characters, first is the code itself, second is the
+        # width in characters, implicitly set to 1.
+        # extra_index = 0
+
+        # Sum 1 to each access to character width and height, because the font
+        # definitions are actually one pixel taller and wider, to allow for drawing
+        # characters that can connect each other.
+        index = 0
+
+        for code_raw in font_lines[1].split():
+            code = code_raw.replace("space", " ")
+            if len(code) == 1:
+                character_cells = 1
+            else:
+                character_cells = int(code[1])
+            char_data = tuple(
+                tuple(
+                    char == PIXEL_DOT_TRUE
+                    for char in character_map_raw[row][
+                        index : index + self.character_width * character_cells
+                    ]
+                )
+                for row in range(self.character_height)
+            )
+
+            character_map[code[0]] = char_data
+            index += character_cells * self.character_width
+        self.character_map = character_map
+
+    def build_symbols_character_map(self) -> None:
+        """Adds symbols to the character map."""
+
+        def add_symbol(code: str, lines: list[str]) -> None:
+            self.character_map[code] = tuple(
+                tuple(dot == PIXEL_DOT_TRUE for dot in line) for line in lines
+            )
+
+        code = ""  # Initialize
+        font_size = ""  # Initialize
+        for symbol in SYMBOLS:
+            current_symbol_lines: list[str] = []
+
+            for line in [
+                line
+                for line in symbol.splitlines()
+                if line.strip() and not line.startswith("# ")
+            ]:
+                if (match := re.match(SYMBOL_HEADER_PATTERN, line)) is not None:
+                    # Found new header, add previous symbol, if any.
+                    if current_symbol_lines:
+                        add_symbol(code, current_symbol_lines[1:])
+                        current_symbol_lines = []
+                    font_size, code = match.groups()
+                if font_size == self.font_size:
+                    current_symbol_lines.append(line)
+
+            if current_symbol_lines:
+                add_symbol(code, current_symbol_lines[1:])
+
+    def get_code(self, code: str) -> CharacterT:
+        """Return a code, else its normalized version, else the fallback character."""
+        if code in self.character_map:
+            return self.character_map[code]
+
+        # Normalize (remove accents, diacritics, etc)
+        code = "".join(
+            ch
+            for ch in unicodedata.normalize("NFD", code)
+            if not unicodedata.combining(ch)
+        )
+        if code not in self.character_map:
+            code = FALLBACK_CHARACTER
+
+        return self.character_map[code]
+
+    def text_matrix(
+        self,
+        text_lines: list[str],
+        matrix_width: int,
+        matrix_height: int,
+        offset: Sequence[int] = (0, 0),
+    ) -> tuple[list[bool], tuple[int, int]]:
+        """Return a list of booleans that represent the text on a matrix."""
+        matrix_length = matrix_width * matrix_height
+        matrix: list[bool | None] = [None] * matrix_length
+        # Fonts have one extra pixel padded, so extract one pixel from spacing.
+        spacing = (self.spacing[0] - 1, self.spacing[1] - 1)
+        overflow_b, overflow_r = 0, 0
+
+        for text_line_number, text_line in enumerate(text_lines):
+            for character_index, character_code in enumerate(text_line):
+                character_data = self.get_code(character_code)
+
+                # Virtual matrix column start position for this character.
+                vmatrix_col_char_starts = character_index * (
+                    self.character_width + spacing[0]
+                )
+
+                character_height = len(character_data)
+                for character_row in range(character_height):
+                    # Virtual matrix row position for this character.
+                    vmatrix_row_char = (
+                        text_line_number * (character_height + spacing[1])
+                        + character_row
+                    )
+
+                    for char_dot_index, char_dot in enumerate(
+                        character_data[character_row],
+                    ):
+                        # Obtain address this pixel belongs to on the actual display.
+                        display_col = (
+                            vmatrix_col_char_starts - offset[0] + char_dot_index
+                        )
+                        display_row = vmatrix_row_char - offset[1]
+
+                        if display_col >= matrix_width:  # Overflow right
+                            overflow_r = max(overflow_r, display_col - matrix_width + 1)
+                            continue
+
+                        if display_row >= matrix_height:
+                            # Overflow bottom,
+                            overflow_b = max(
+                                overflow_b,
+                                display_row - matrix_height + 1,
+                            )
+                            continue
+
+                        if display_col < 0 or display_row < 0:
+                            continue  # overflow left or top
+
+                        character_bool_start_pos = (
+                            vmatrix_col_char_starts
+                            - offset[0]
+                            + (matrix_width * display_row)
+                        )
+                        pixel_position = character_bool_start_pos + char_dot_index
+                        if char_dot or not matrix[pixel_position]:
+                            # Do not unset the pixel if it was previously set.
+                            matrix[pixel_position] = char_dot
+        return matrix, (overflow_r, overflow_b)  # type:ignore[return-value] # ty:ignore[invalid-return-type]
+
+
+########################################################################################
+# Program ##############################################################################
+########################################################################################
+def command_draw(file: Path, color: RGBT, output: Output) -> None:
+    if file == READ_FROM_STDIN:
+        lines = sys.stdin.readlines()
+    else:
+        with file.open("r") as f:
+            lines = f.readlines()
+    string = " ".join(clean_line for line in lines if (clean_line := line.strip()))
+    output.write(
+        Pixels(
+            image_format="rgb",
+            rgb=Pixels.pixels_from_string(
+                default_color=color,
+                string=string,
+            ),
+        ),
+    )
+
+
+def command_bitmap(
+    file: Path,
+    image_format: Literal["1bit", "rgb"],
+    color: RGBT,
+    output: Output,
+) -> None:
+    if file == READ_FROM_STDIN:
+        bitmap = sys.stdin.buffer.read()
+    else:
+        with file.open("rb") as f:
+            bitmap = f.read()
+    match image_format:
+        case "1bit":
+            rgb_list = [
+                color if c == "1" else Color.black.value
+                for byte in bitmap
+                for c in f"{byte:08b}"
+            ]
+        case "rgb":
+            rgb_list = [
+                (
+                    int.from_bytes(bitmap[i : i + 1]),
+                    int.from_bytes(bitmap[i + 1 : i + 2]),
+                    int.from_bytes(bitmap[i + 2 : i + 3]),
+                )
+                for i in range(0, len(bitmap), 3)
+            ]
+    output.write(Pixels(image_format="rgb", rgb=rgb_list))
+
+
+def command_text(  # noqa: C901, PLR0912
+    file: Path,
+    font_size: str,
+    color: RGBT,
+    scroll: Literal["vertical", "horizontal", "none"],
+    scroll_sleep: float,
+    scroll_repeat: int,
+    scroll_length: int,
+    symbols_file: Path | None,
+    font_file: Path | None,
+    font_spacing: tuple[int, int],
+    output: Output,
+) -> None:
+    if file == READ_FROM_STDIN:
+        lines = sys.stdin.readlines()
+    else:
+        with file.open("r") as f:
+            lines = f.readlines()
+
+    if symbols_file:
+        with symbols_file.open("r") as f:
+            SYMBOLS.append(f.read())
+
+    if font_file:
+        with font_file.open("r") as f:
+            global FONTS  # noqa: PLW0603
+            FONTS = [f.read(), *FONTS]
+
+    text_instance = Text(font_size, font_spacing=font_spacing)
+
+    direction: Literal["forward", "backward"] = "forward"
+    overflow = None
+    offset = [0, 0]
+    if scroll == "horizontal":
+        scroll_direction = 0
+    else:
+        scroll_direction = 1
+    while True:
+        bool_matrix, current_overflow = text_instance.text_matrix(
+            text_lines=[line.rstrip() for line in lines],
+            matrix_width=output.width,
+            matrix_height=output.height,
+            offset=offset,
+        )
+        output.write(
+            Pixels(
+                image_format="1bit",
+                boolean=bool_matrix,
+                default_color=color,
+            ),
+        )
+
+        if overflow is None:
+            overflow = current_overflow
+
+        if overflow[scroll_direction] == 0 or scroll == "none" or scroll_repeat == 0:
+            break
+
+        if overflow[scroll_direction]:
+            if direction == "forward":
+                if current_overflow[scroll_direction] == 0:
+                    # No more overflow, change direction from forward to backwards.
+                    scroll_repeat -= 1
+                    direction = "backward"
+                else:
+                    offset[scroll_direction] += min(
+                        current_overflow[scroll_direction],
+                        scroll_length,
+                    )
+            elif direction == "backward":
+                if current_overflow[scroll_direction] == overflow[scroll_direction]:
+                    # Arrived to the start, change direction from backwards to forward.
+                    scroll_repeat -= 1
+                    direction = "forward"
+                else:
+                    offset[scroll_direction] -= min(
+                        offset[scroll_direction],
+                        scroll_length,
+                    )
+        time.sleep(scroll_sleep)
+
+
+def main() -> None:
+    args = argparse_get_args()
+    Log.set_logging_level(args.log_level)
+    logger.info("User supplied arguments: %s.", args)
+
+    try:
+        match args.output:
+            case "keyboard":
+                output: Output = KeyboardLeds(hidraw_path=args.hidraw)
+            case "oled":
+                output = OledDisplay(hidraw_path=args.hidraw)
+            case "stdout":
+                output = Stdout()
+            case _:
+                raise ValueError("Invalid output")
+
+        match args.command:
+            case "fill":
+                output.fill(args.color)
+            case "draw":
+                command_draw(args.file, args.color, output)
+            case "bitmap":
+                command_bitmap(args.file, args.format, args.color, output)
+            case "text":
+                command_text(
+                    args.file,
+                    args.font_size,
+                    args.color,
+                    args.scroll,
+                    args.scroll_sleep,
+                    args.scroll_repeat,
+                    args.scroll_length,
+                    args.symbols_file,
+                    args.font_file,
+                    (args.font_spacing_horizontal, args.font_spacing_vertical),
+                    output,
+                )
+    except (
+        FontNotFoundError,
+        HidrawDeviceNotFoundError,
+        InvalidSizeError,
+        InvalidTokenError,
+    ):
+        sys.exit(1)
+
+
+"""Font string definition format:
+First line: "size <int>x<int> spacing <int>,<int>".
+Second line: list of character codes in order. Because the codes are separated with
+             space character, the space character code itself is represented using the
+             string "space". If the code is followed by a number it means the number
+             of characters cells width it takes, if not set it takes one cell.
+Next lines: using PIXEL_DOT_TRUE and PIXEL_DOT_FALSE, are drawn the characters.
+            Each character first column is empty and next columns define the
+            character.
+
+Each cell has one extra bottom row and one extra right column pixels. These can be used
+for characters that wish to be connected each other across cells.
+"""
+
+font_5x5 = """
+size 5x5 spacing 1,1
+space a     b     c     d     e     f     g     h     i     j     k     l     m     n     o     p     q     r     s     t     u     v     w     x     y     z     A     B     C     D     E     F     G     H     I     J     K     L     M     N     O     P     Q     R     S     T     U     V     W     X     Y     Z     ?
+............O...............O..........OO..OOOO.O.......O......O..O..O...OO.....................OOOO...OOOO..............O.........................................OOO..OOOO...OOOO.OOO...OOOOO.OOOOO..OOO..O...O.OOOOO....OO.O...O.O.....OO.OO.O...O..OOO..OOOO...OOO..OOOO...OOO..OOOOO.O...O.O...O.O...O.O...O.O...O.OOOOO..OOO..
+.......OOO..OOOO...OOOO..OOOO..OOO....O...O...O.OOOO..............O.O.....O...OO.O..OOOO...OOO..O...O.O...O.OO.OO..OOOO.OOOO..O...O.O...O.O...O.O..O..O...O.OOOOO.O...O.O...O.O.....O..O..O.....O.....O.....O...O...O.......O.O..O..O.....O.O.O.OO..O.O...O.O...O.O...O.O...O.O.......O...O...O.O...O.O...O..O.O..O...O....O..O...O.
+..........O.O...O.O.....O...O.OOOOO.OOOOO..OOOO.O...O..OO.....OO..OO......O...O.O.O.O...O.O...O.OOOOO..OOOO..OO...OO.....O....O...O.O...O.O.O.O..OO....OOOO....OO.OOOOO.OOOO..O.....O...O.OOOO..OOO...O.OOO.OOOOO...O.......O.OOO...O.....O...O.O.O.O.O...O.OOOO..O...O.OOOO...OOO....O...O...O..O.O..O.O.O...O....OOOO...O.....OO..
+......OOOOO.O...O.O.....O...O.O.......O.......O.O...O...O......O..O.OO....O...O.O.O.O...O.O...O.O.........O..O.......OO..O....O...O..O.O..O.O.O.O..O......O..OO...O...O.O...O.O.....O..O..O.....O.....O...O.O...O...O...O...O.O..O..O.....O...O.O..OO.O...O.O.....O..O..O...O.....O...O...O...O..O.O...O.O...O.O......O..O..........
+.......OOOO.OOOO...OOOO..OOOO..OOOO...O...OOOO..O...O.OOOOO.OOO...O...O.OOOOO.O.O.O.O...O..OOO..O.........O.OOO...OOOO....OOO..OOOO...O....O.O..O..O..OOOO..OOOOO.O...O.OOOO...OOOO.OOO...OOOOO.O......OOO..O...O.OOOOO..OOO..O...O.OOOOO.O...O.O...O..OOO..O......OO.O.O...O.OOOO....O....OOO....O....O.O..O...O..OOO..OOOOO...O...
+....................................................................................................................................................................................................................................................................................................................................
+"""  # noqa: E501
+
+font_5x7 = """
+size 5x7 spacing 1,1
+space a     b     c     d     e     f     g     h     i     j     k     l     m     n     o     p     q     r     s     t     u     v     w     x     y     z     A     B     C     D     E     F     G     H     I     J     K     L     M     N     O     P     Q     R     S     T     U     V     W     X     Y     Z     0     1     2     3     4     5     6     7     8     9     !     "     #     $     %     &     '     (     )     *     +     ,     -     .     /     ;     :     <     =     >     ?     @     [     \\    ]     ^     `     {     |     }     ~     •     ·     ¬     ¶     2          2          2          2          2
+............O...............O..........OO.......O.......O......O..O......OO..............................................O..........................................O...OOOO...OOOO.OOO...OOOOO.OOOOO..OOO..O...O.OOOOO....OO.O...O.O.....O...O.O...O..OOO..OOOO...OOO..OOOO...OOO..OOOOO.O...O.O...O.O...O.O...O.O...O.OOOOO..OOO....O....OOO...OOO.....O..OOOOO...O...OOOOO..OOO...OOO....O....O.O...O.O...OOO..OO..O..OOO....O......O...O......................................O................................OOO...OOO...OOO..O......OOO....O....O......OO....O....OO............................OOOO.OOOOOOOOO...OOOOOOOOO...OOOOOOOOO...OOOOOOOOO...OOOOOOOOO...
+............O...............O.........O.........O.................O...O...O..............................................O.........................................O.O..O...O.O.....O..O..O.....O.....O...O.O...O...O.......O.O..O..O.....OO.OO.OO..O.O...O.O...O.O...O.O...O.O.......O...O...O.O...O.O...O.O...O.O...O.....O.O..OO..OO...O...O.O...O...OO..O......O....O...O.O...O.O...O...O....O.O...O.O..O.O.O.OO..O.O...O...O.....O.....O.....O.....O.........................O.........O......OO.OOOOO.OO....O...O.O..OO..O.....O.......O...O.O....O....O......O......O..........................OOO.O.O.......O...O.......O...O.......O...O.......O...O.......O...
+.......OOO..OOOO...OOOO..OOOO..OOO..OOOOO..OOOO.OOOO...OO.....OO..O..O....O...OO.O..OOOO...OOO..OOOO...OOOO.OO.OO..OOOO.OOOO..O...O.O...O.O...O.O..O..O...O.OOOOO.O...O.O   O.O.....O...O.O.....O.....O.....O...O...O.......O.O.O...O.....O.O.O.O.O.O.O...O.O...O.O...O.O...O.O.......O...O...O.O...O.O...O..O.O..O...O....O..O.O.O.O.O......O......O..O.O..O.....O.........O.O...O.O...O...O.........OOOOO.O.O......O..O..O.........O.......O..O.O.O...O........................O.....O....O....OO...........OO.....O..O.O.O..O.....O.......O..O...O....O...O......O......O...O......................OOO.O.O.......OOO.O.O.....OOO.O.OO....OOO.O.OOO...OOO.O.OOOOO.OOO.
+..........O.O...O.O.....O...O.O...O...O...O...O.O...O...O......O..O.O.....O...O.O.O.O...O.O...O.O...O.O...O..OO...O......O....O...O.O...O.O...O.O..O..O...O....O..OOOOO.OOOO..O.....O...O.OOOO..OOO...O.OOO.OOOOO...O.......O.OO....O.....O...O.O..OO.O...O.OOOO..O...O.OOOO...OOO....O...O...O..O.O..O.O.O...O....OOOO...O...O.O.O...O.....O.....OO..OOOOO.OOOO..OOOO.....O...OOO...OOO....O..........O.O...OOO....O....OO..........O.......O...OOO..OOOOO.......OOOOO.........O...............O...............O...O...O.O.O..O......O......O..............O.......O.......O.O.O.O...O.........OOOOO..OO.O.O.......OOO.O.O.....OOO.O.OO....OOO.O.OOO...OOO.O.OOOOO.OOO.
+.......OOOO.O...O.O.....O...O.OOOO....O....OOOO.O...O...O......O..OO......O...O.O.O.O...O.O...O.OOOO...OOOO..O.....OOO...O....O...O.O...O.O.O.O..OO....OOOO...O...O...O.O...O.O.....O...O.O.....O.....O...O.O...O...O.......O.O.O...O.....O...O.O...O.O...O.O.....O.O.O.O..O......O...O...O...O..O.O..O.O.O..O.O......O..O....O.O.O...O....O........O....O......O.O...O...O...O...O....O....O.........OOOOO...O.O..O....O.O.O........O.......O...O.O....O......................O.................OO...........OO....O...O..O...O.......O.....O...............O......O......O.....O...OOO....O.......O...O.O.O.......OOO.O.O.....OOO.O.OO....OOO.O.OOO...OOO.O.OOOOO.OOO.
+......O...O.O...O.O.....O...O.O.......O.......O.O...O...O......O..O.OO....O...O.O.O.O...O.O...O.O.........O..O........O..O....O...O..O.O..O.O.O.O..O......O..O....O...O.O ..O.O    .O..O..O.....O.....O...O.O...O...O...O...O.O..O..O.....O...O.O...O.O...O.O.....O..O..O...O.....O...O...O...O..O.O...O.O..O...O.....O.O.....OO..O...O...O.....O...O....O......O.O...O..O....O...O...O................O.O..O.O.O.O..OO.O..O..........O.....O...O...O...O.....O..........O....O........O....O......OO.OOOOO.OO..........O......O.......O.....O...............O......O......O..........O.................O.O.O.......O...O.......O...O.......O...O.......O...O.......O...
+.......OOOO.OOOO...OOOO..OOOO..OOOO...O...OOOO..O...O.OOOOO.OOO...O...O.OOOOO.O.O.O.O...O..OOO..O.........O.OOO...OOOO....OOO..OOOO...O....O.O..O..O..OOOO..OOOOO.O...O.OOOO...OOOO.OOOO..OOOOO.O......OOO..O...O.OOOOO..OOO..O...O.OOOOO.O...O.O...O..OOO..O......OO.O.O...O.OOOO....O....OOO....O....O.O..O...O..OOO..OOOOO..OOO..OOOOO.OOOOO..OOO.....O..OOOO...OOO..O......OOO...O......O..........O.O...OOO..O..OO..OO.O..........O...O.................O...........O....O.......O.....O.......................O....OOOO..OOO......O..OOO................OO....O....OO.............................O.O.OOOOOOOOO...OOOOOOOOO...OOOOOOOOO...OOOOOOOOO...OOOOOOOOO...
+........................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................
+"""  # noqa: E501
+
+font_5x9 = """
+size 5x9 spacing 1,1
+space a     b     c     d     e     f     g     h     i     j     k     l     m     n     o     p     q     r     s     t     u     v     w     x     y     z     A     B     C     D     E     F     G     H     I     J     K     L     M     N     O     P     Q     R     S     T     U     V     W     X     Y     Z     0     1     2     3     4     5     6     7     8     9     !     "     #     $     %     &     '     (     )     *     +     ,     -     .     /     ;     :     <     =     >     ?     @     [     \\    ]     ^     `     {     |     }     ~     •     ·     ¬     ¶     2          2          2          2          2
+............O...............O..........OO.......O.......O......O..O......OO..............................................O..........................................O...OOOO...OOOO.OOO...OOOOO.OOOOO..OOO..O...O.OOOOO....OO.O...O.O.....O...O.O...O..OOO..OOOO...OOO..OOOO...OOO..OOOOO.O...O.O...O.O...O.O...O.O...O.OOOOO..OOO....O....OOO...OOO.....O..OOOOO...O...OOOOO..OOO...OOO....O....O.O...O.O...OOO..OO..O..OOO....O......O...O......................................O................................OOO...OOO...OOO..O......OOO....O.....O.....OO....O....OO............................OOOO.OOOOOOOOO...OOOOOOOOO...OOOOOOOOO...OOOOOOOOO...OOOOOOOOO...
+............O...............O.........O.........O.................O...O...O..............................................O.........................................O.O..O...O.O.....O..O..O.....O.....O...O.O...O...O.......O.O..O..O.....OO.OO.OO..O.O...O.O...O.O...O.O...O.O.......O...O...O.O...O.O...O.O...O.O...O.....O.O..OO..OO...O...O.O...O...OO..O......O....O...O.O...O.O...O...O....O.O...O.O..O.O.O.OO..O.O...O...O.....O.....O.....O.....O.........................O.........O......OO.OOOOO.OO....O...O.O..OO..O....O........O...O.O.....O...O......O......O..........................OOO.O.O.......O...O.......O...O.......O...O.......O...O.......O...
+.......OOO..OOOO...OOOO..OOOO..OOO..OOOOO..OOOO.OOOO...OO.....OO..O..O....O...OO.O..OOOO...OOO..OOOO...OOOO.OO.OO..OOOO.OOOO..O...O.O...O.O...O.O..O..O...O.OOOOO.O...O.O   O.O.....O...O.O.....O.....O.....O...O...O.......O.O.O...O.....O.O.O.O.O.O.O...O.O...O.O...O.O...O.O.......O...O...O.O...O.O...O..O.O..O...O....O..O.O.O.O.O......O......O..O.O..O.....O........O..O...O.O...O...O.........OOOOO.O.O......O..O..O.........O.......O..O.O.O...O........................O.....O....O....OO...........OO.....O..O.O.O..O.....O.......O..O...O.....O..O......O......O...O......................OOO.O.O.......OOO.O.O.....OOO.O.OO....OOO.O.OOO...OOO.O.OOOOO.OOO.
+..........O.O...O.O.....O...O.O...O...O...O...O.O...O...O......O..O.O.....O...O.O.O.O...O.O...O.O...O.O...O..OO...O......O....O...O.O...O.O...O.O..O..O...O....O..OOOOO.OOOO..O.....O...O.OOOO..OOO...O.OOO.OOOOO...O.......O.OO....O.....O...O.O..OO.O...O.OOOO..O...O.OOOO...OOO....O...O...O..O.O..O.O.O...O....OOOO...O...O.O.O...O.....O.....OO..OOOOO.OOOO..OOOO....O....OOO...OOO....O..........O.O...OOO....O....OO..........O.......O...OOO..OOOOO.......OOOOO.........O...............O...............O...O...O.O.O..O......O......O..............O.......O.......O.O.O.O...O.........OOOOO..OO.O.O.......OOO.O.O.....OOO.O.OO....OOO.O.OOO...OOO.O.OOOOO.OOO.
+.......OOOO.O...O.O.....O...O.OOOO....O...O...O.O...O...O......O..OO......O...O.O.O.O...O.O...O.O...O.O...O..O.....OOO...O....O...O.O...O.O.O.O..OO....OOOO...O...O...O.O...O.O.....O...O.O.....O.....O...O.O...O...O.......O.O.O...O.....O...O.O...O.O...O.O.....O.O.O.O..O......O...O...O...O..O.O..O.O.O..O.O......O..O....O.O.O...O....O........O....O......O.O...O..O....O...O....O....O.........OOOOO...O.O..O....O.O.O........O.......O...O.O....O......................O.................OO...........OO....O...O..O...O.......O.....O...............O......O......O.....O...OOO....O.......O...O.O.O.......OOO.O.O.....OOO.O.OO....OOO.O.OOO...OOO.O.OOOOO.OOO.
+......O...O.O...O.O.....O...O.O.......O...O...O.O...O...O......O..O.OO....O...O.O.O.O...O.O...O.O...O.O...O..O........O..O....O...O..O.O..O.O.O.O..O......O..O....O...O.O ..O.O    .O..O..O.....O.....O...O.O...O...O...O...O.O..O..O.....O...O.O...O.O...O.O.....O..O..O...O.....O...O...O...O..O.O...O.O..O...O.....O.O.....OO..O...O...O.....O...O....O......O.O...O.O.....O...O...O................O.O..O.O.O.O..OO.O..O..........O.....O...O...O...O.....O...........O...O........O....O......OO.OOOOO.OO..........O......O........O....O...............O......O......O..........O.................O.O.O.......O...O.......O...O.......O...O.......O...O.......O...
+.......OOOO.OOOO...OOOO..OOOO..OOOO...O....OOOO.O...O.OOOOO....O..O...O.OOOOO.O.O.O.O...O..OOO..OOOO...OOOO.OOO...OOOO....OOO..OOOO...O....O.O..O..O..OOOO..OOOOO.O...O.OOOO...OOOO.OOOO..OOOOO.O......OOO..O...O.OOOOO..OOO..O...O.OOOOO.O...O.O...O..OOO..O......OO.O.O...O.OOOO....O....OOO....O....O.O..O...O..OOO..OOOOO..OOO..OOOOO.OOOOO..OOO.....O..OOOO...OOO..O......OOO...O......O..........O.O...OOO..O..OO..OO.O..........O...O.................O............O...O.......O.....O.......................O....OOOO..OOO......O..OOO................OO....O....OO.............................O.O.OOOOOOOOO...OOOOOOOOO...OOOOOOOOO...OOOOOOOOO...OOOOOOOOO...
+..............................................O................O................................O.........O.............................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................
+..........................................OOOO..............OOO.................................O.........O.............................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................
+........................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................
+"""  # noqa: E501
+
+
+font_8x14 = """
+size 8x14 spacing 1,1
+ space   a        b        c        d        e        f        g        h        i        j        k        l        m        n        o        p        q        r        s        t        u        v        w        x        y        z        A        B        C        D        E        F        G        H        I        J        K        L        M        N        O        P        Q        R        S        T        U        V        W        X        Y        Z        0        1        2        3        4        5        6        7        8        9        !        "        #        $        %        &        '        (        )        *        +        ,        -        .        /        ;        :        <        =        >        ?        @        [        \\       ]        ^        `        {        |        }        ~        •        ·        ¬        ¶        2                2                2                2                2                󰂎        󰁺        󰁻        󰁼        󰁽        󰁾        󰁿        󰂀        󰂁        󰂂        󰁹
+..................OO......................OO...............OOO..........OO..........OO.........OO..OO........OOOO.....................................................................OO..............................................................OO....OOOOOO.....OOOOO..OOOOO.....OOOOOO....OOOOO....OOOOO..OO....OO.OOOOOOOO.......OO.OO.......OO.......OO....OO.OO....OO...OOOO...OOOOOOO....OOOO...OOOOOO.....OOOOO..OOOOOOOO.OO....OO.OO....OO.OO....OO.OO....OO.OO....OO.OOOOOOOO...OOOO......OO......OOOOO...OOOOOO......OOO..OOOOOOO......OO...OOOOOOOO...OOOO.....OOOO......OO.....OO..OO...OO..OO.....OO.....O....OO...OOOO......OO.........OO...OO.........................................................OO................................................OOOO.....OOOO.....OOOOO..OO........OOOOO......OO......OO.........OOO.....OO.....OOO...............................................................................................................................................OO.......OO.......OO.......OO.......OO.......OO.......OO.......OO.......OO.......OO.......OO....
+..................OO......................OO..............OOOO..........OO..........OO.........OO..OO........OOOO.....................................................................OO.............................................................O..O...OOOOOOO...OOOOOOO.OOOOOO...OOOOOOOO..OOOOOOO..OOOOOOO.OO....OO.OOOOOOOO.......OO.OO....OO.OO.......OOO..OOO.OOO...OO..OOOOOO..OOOOOOOO..OOOOOO..OOOOOOO...OOOOOOO.OOOOOOOO.OO....OO.OO....OO.OO....OO.OO....OO.OO....OO.OOOOOOOO..OOOOOO....OOO.....OOOOOOO.OOOOOOOO....OOOO..OOOOOOOO....OO....OOOOOOOO..OOOOOO...OOOOOO.....OO.....OO..OO...OO..OO...OOOOOO..O.O...OO..OOOOOO.....OO........OO.....OO........................................................OO...............................................OOOOOO...OOOOOO....OOOOO..OO........OOOOO......OO......OO........OOOO.....OO.....OOOO..........................................OOOOOO............................................................................................OOOOOO...OOOOOO...OOOOOO...OOOOOO...OOOOOO...OOOOOO...OOOOOO...OOOOOO...OOOOOO...OOOOOO...OO..OO..
+..................OO......................OO.............OO.............OO.........................OO....O.....OO.....................................................................OO............................................................OO..OO..OO....OO.OOO......OO...OO..OO.......OO.......OO.......OO....OO....OO..........OO.OO..OOOO.OO.......OOO..OOO.OOO...OO.OO....OO.OO....OO.OO....OO.OO....OO.OO..........OO....OO....OO.OO....OO.OO....OO.OO....OO.OO....OO.......OO.OO....OO..OOOO....OO....OO.OO....OO...OO.OO..OO.........OO...........OO.OO....OO.OO....OO....OO.....OO..OO...OO..OO...OOOOOO..O.O..OO..OO....OO....OO.......OO.......OO.....OO..OO.....OO....................................OO.........................OO............OO......OO....OO.OO....OO...OO......OO..........OO....OO..OO......OO.....OO........OO........OO........................................OOOOOOO.OOOOOOOOOOOOOO....OOOOOOOOOOOOOO....OOOOOOOOOOOOOO....OOOOOOOOOOOOOO....OOOOOOOOOOOOOO....O......O.O......O.O......O.O......O.O......O.O......O.O......O.O......O.O......O.O......O.O.OOOO.O.
+..........OOOOO...OO.OOO.....OOOO.....OOOOOO...OOOO......OO......OOOOOO.OOOOO.....OOOO......OOOOO..OO...OO.....OO....OOOO.OO..OO..OO.....OOOO...OOOOOO.....OOOOOO.OOO.OOOO...OOOO...OOOOOOO..OO....OO.OO....OO.OO....OO.OO....OO.OO....OO.OOOOOOOO.OO....OO.OO....OO.OO.......OO....O..OO.......OO.......OO.......OO....OO....OO..........OO.OO..OO...OO.......OO.OO.OO.OOOO..OO.OO....OO.OO....OO.OO....OO.OO....OO.OO..........OO....OO....OO.OO....OO.OO....OO..OO..OO..OO....OO.......OO.OO...OOO.OO.OO..........OO.......OO..OO..OO..OO........OO............OO.OO....OO.OO....OO....OO.....OO..OO..OOOOOOOO.O..OO..O..O...OO..OO...OO.....OO.......OO.......OO.....OO..OO.....OO....................................OO.....OO.......OO........OO..............OO.....OO....OO.OO..OOOO...OO......OO..........OO....OO..OO......OO.....OO........OO........OO....OO.................................OOOOO.OO.OOOOOOOOOOOOOO....OOOOOOOOOOOOOO....OOOOOOOOOOOOOO....OOOOOOOOOOOOOO....OOOOOOOOOOOOOO....O......O.O......O.O......O.O......O.O......O.O......O.O......O.O......O.O......O.O.OOOO.O.O.OOOO.O.
+.........OOOOOOO..OOOOOOO...OOOOOO...OOOOOOO..OOOOOO..OOOOOOOO..OOOOOOO.OOOOOOO...OOOO.....OOOOOO..OO..OO......OO....OO.OO.OO.OO.OOOO...OOOOOO..OOOOOOO...OOOOOOO.OOOOOOOO..OOOOOO..OOOOOOO..OO....OO.OO....OO.OO....OO.OO....OO.OO....OO.OOOOOOOO.OO....OO.OO...OO..OO.......OO....OO.OO.......OO.......OO.......OO....OO....OO..........OO.OOOO.....OO.......OO.OO.OO.OO.O..OO.OO....OO.OO....OO.OO....OO.OO....OO..OO.........OO....OO....OO.OO....OO.OO....OO..OO..OO..OO....OO.....OO...OO..O.OO.O..OO.........OO.......OO..OO...OO..OO........OO...........OO..OO....OO.OO....OO....OO.............OOOOOOOO.O..OO........OO....OO.OO..............OO.........OO......OO.......OO...................................OO......OO.......OO.......OO....OOOOOOOO....OO.........OO..OO.OOOOO...OO.......OO.........OO...OO....OO............OO........OO........OO...OOOO........OO......................OOOOO.OO.OO..........OO....OO..........OO....OO..........OO....OO..........OO....OO..........OO....O......O.O......O.O......O.O......O.O......O.O......O.O......O.O......O.O.OOOO.O.O.OOOO.O.O.OOOO.O.
+..............OOO.OO....OO.OO....OO.OO....OO.OO....OO.OOOOOOOO.OO....OO.OO....OO....OO.........OO..OO.OO.......OO....OO.OO.OO.OOOO..OO.OO....OO.OO....OO.OO....OO..OOO.....OO....OO...OO.....OO....OO.OO....OO.OO....OO.OO....OO.OO....OO........O.OOOOOOOO.OOOOOO...OO.......OO....OO.OOOOOO...OOOOOO...OO..OOO..OOOOOOOO....OO..........OO.OOOO.....OO.......OO....OO.OO.OO.OO.OO....OO.OOOOOOO..OO....OO.OOOOOOO...OOOO.......OO....OO....OO..OO..OO..OO.OO.OO....OO.....OOOOOOO.....OO...OO.OO.OO....OO........OO......OOO...OOOOOOOO.OOOOOO....OOOOO.......OO....OOOOOO...OOOOOOO....OO..............OO..OO...OOOOOO......OO.....OOO...............OO.........OO...OOOOOOOO.OOOOOOOO..........OOOOOOOO.............OO........................OO.....OOOOOOOO.....OO.......OO...OO.OO.OO...OO........OO........OO...OO....OO...........OO.........OO.........OO..OO.OO.OO...OOOO......OO....OOOOOOOO.OOOOO.OO.OO..........OO....OO.OO.......OO....OO.OOOOO....OO....OO.OOOOOO...OO....OO.OOOOOOOO.OO....O......O.O......O.O......O.O......O.O......O.O......O.O......O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.
+..........OOOOOOO.OO....OO.OO.......OO....OO.OOOOOOOO....OO....OO....OO.OO....OO....OO.........OO..OOOO........OO....OO.OO.OO.OOO...OO.OO....OO.OO....OO.OO....OO..OO.......OO........OO.....OO....OO.OO....OO.OO....OO..OO..OO..OO....OO......OO..OOOOOOOO.OOOOOO...OO.......OO....OO.OOOOOO...OOOOOO...OO.OOOOO.OOOOOOOO....OO..........OO.OO.......OO.......OO....OO.OO..O.OO.OO....OO.OOOOOO...OO....OO.OOOOOO......OOOO.....OO....OO....OO..OO..OO..OO.OO.OO....OO......OOOOOO...OO.....OO.O..OO....OO.......OO.......OOO...OOOOOOOO.OOOOOOO...OOOOOO.....OO.....OOOOOO....OOOOOO....OO..............OO..OO...OOOOOO....OO.......OO................OO.........OO...OOOOOOOO.OOOOOOOO..........OOOOOOOO.............OO.......................OO....................OO.....OO....OO.OOOOO...OO........OO........OO......................OO.........OO.........OO..OO.OO.OO...OOOO......OO....OOOOOOOO.OOOOO.OO.OO..........OOOOO.OO.OO.......OOOOO.OO.OOOOO....OOOOO.OO.OOOOOO...OOOOO.OO.OOOOOOOO.OOOOO.O......O.O......O.O......O.O......O.O......O.O......O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.
+.........OOOOOOOO.OO....OO.OO.......OO....OO.OOOOOOOO....OO....OO....OO.OO....OO....OO.........OO..OOO.........OO....OO.OO.OO.OO....OO.OO....OO.OO....OO.OO....OO..OO........OOOO.....OO.....OO....OO..OO..OO..OO.OO.OO....OO....OO....OO....OO....OO....OO.OO...OO..OO.......OO....OO.OO.......OO.......OO....OO.OO....OO....OO..........OO.OOOO.....OO.......OO....OO.OO..OOOO.OO....OO.OO.......OO....OO.OO.OO.........OO.....OO....OO....OO..OO..OO..OO.OO.OO..OO..OO........OO...OO.....OO.O..OO....OO......OO..........OO.......OO........OO..OO...OO...OO.....OO....OO......OO....................OOOOOOOO....OO..O...OO......OOOO.O.............OO.........OO......OO.......OO.................................OO........................OO....................OO.....OO....OO..OOO....OO.........OO.......OO.......................OO........OO........OO.......OOOO....OO...................OO..OOOO.OO.OO..........OOOOO.OO.OO.......OOOOO.OO.OOOOO....OOOOO.OO.OOOOOO...OOOOO.OO.OOOOOOOO.OOOOO.O......O.O......O.O......O.O......O.O......O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.
+.........OO....OO.OO....OO.OO.......OO....OO.OO..........OO.....OOOOOOO.OO....OO....OO.........OO..OOO.........OO....OO.OO.OO.OO....OO.OO....OO.OO....OO.OO....OO..OO...........OO....OO.....OO....OO..OO..OO..OO.OO.OO..OO..OO...OOOOOOO..OO......OO....OO.OO....OO.OO.......OO....O..OO.......OO.......OO....OO.OO....OO....OO..........OO.OOOO.....OO.......OO....OO.OO...OOO.OO....OO.OO.......OO..O.OO.OO.OOO.........OO....OO....OO....OO..OO..OO...OO..OO...OO..OO........OO.OO.......OOO...OO....OO.....OO............OO......OO........OO..OO...OO..OO......OO....OO.....OO.....................OOOOOOOO.O..OO..O..OO...O..OO..OOO..............OO.......OO.....OO..OO.....OO................................OO..........................OO.....OOOOOOOO.....OO......OO....OO.........OO..........OO......OO.......................OO........OO........OO........OO..........................OO...OOO.OO.OO..........OOOOO.OO.OO.......OOOOO.OO.OOOOO....OOOOO.OO.OOOOOO...OOOOO.OO.OOOOOOOO.OOOOO.O......O.O......O.O......O.O......O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.
+.........OO....OO.OO....OO.OO....OO.OO....OO.OO....OO....OO......OOOOOO.OO....OO....OO.........OO..OOOOO.......OO....OO.OO.OO.OO....OO.OO....OO.OOO...OO.OO...OOO..OO......OO....OO...OO.....OO...OOO..OO..OO...OO..OO..OO....OO....OOOOO.O........OO....OO.OO....OO.OOO......OO...OO..OO.......OO.......OO....OO.OO....OO....OO..........OO.OO..OO...OO.......OO....OO.OO...OOO.OO....OO.OO.......OO..O.OO.OO..OOO........OO....OO....OO....OO....OO.....OO..OO..OO....OO.......OO.OO.......OO....OO....OO....OO.......OO....OO......OO........OO..OO...OO..OO......OO....OO....OO.......OO..............OO..OO...OOOOOO...OO..O.O.OO...OO..............OO.......OO.....OO..OO.....OO................................OO...........................OO....OOOOOOOO....OO.............OO.........OO..........OO......OO.......................OO........OO........OO....................................OO....OO.OO.OO..........OO....OO.OO.......OO....OO.OOOOO....OO....OO.OOOOOO...OO....OO.OOOOOOOO.OO....O......O.O......O.O......O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.
+..........OOOOOOO.OOOOOOO...OOOOOO...OOOOOOO..OOOOOO..OOOOOOOO.......OO.OO....OO..OOOOOO.......OO..OO..OOO..OOOOOOOO.OO.OO.OO.OO....OO..OOOOOO..OOOOOOO...OOOOOOO.OOOOOO....OOOOOO....OOOOO...OOOOOOO...OOOO....OO..OO..OO....OO.......OO.OOOOOOOO.OO....OO.OOOOOOO...OOOOOOO.OOOOOO...OOOOOOOO.OO........OOOOOO..OO....OO.OOOOOOOO.OOOOOOO..OO..OOOO..OOOOOOO.OO....OO.OO....OO..OOOOOO..OO........OOOOOO..OO...OOO.OOOOOOO.....OO....OOOOOOOO....OO.....OO..OO..OO....OO..OOOOOO..OOOOOOOO..OOOOOO..OOOOOOOO.OOOOOOOO.OOOOOOOO......OO..OOOOOOO...OOOOOOO.OO........OOOOOO....OO........OO..............OO..OO...OOOOOO..OO...O.O.OOOOO.OO..............OO.....OO...........................OO...............OO....OO..........OO.......OO........OO..............OO........OO.....OOOOOO....OOOOO........OO..OOOOO........................OOOO.....OO.....OOOO...........................................OO.OO.OO..........OO....OO..........OO....OO..........OO....OO..........OO....OO..........OO....O......O.O......O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.
+...........OOOOOO.OOOOOO.....OOOO.....OOOOOO...OOOO...OOOOOOOO......OOO.OO....OO..OOOOOO.......OO..OO....OO.OOOOOOOO.OO.OO.OO.OO....OO...OOOO...OO.OOO.....OOOOOO.OOOOOO.....OOOO......OOOO....OO..OO....OO.....OO..OO..OO....OO.......OO.OOOOOOOO.OO....OO.OOOOOO.....OOOOO..OOOOO.....OOOOOO..OO.........OOOO...OO....OO.OOOOOOOO..OOOOO...OO....OO...OOOOO..OO....OO.OO....OO...OOOO...OO.........OOOO...OO....OO..OOOOO......OO......OOOO......OO.....OO..OO..OO....OO...OOOO...OOOOOOOO...OOOO...OOOOOOOO.OOOOOOOO..OOOOOO.......OO...OOOOO.....OOOOO..OO.........OOOO....OO.........................OO..OO.....OO....OO....O...OOO...O...............OO...OO............................OO...............OO....OO..........OO.......OO.........OO............OO.........OO......OOOO.....OOOOO........OO..OOOOO.........................OOO.....OO.....OOO............................................OO.OO.OOOOOOOOOOOOOO....OOOOOOOOOOOOOO....OOOOOOOOOOOOOO....OOOOOOOOOOOOOO....OOOOOOOOOOOOOO....O......O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.O.OOOO.O.
+................................................................OOOOOO.....................OOOOOO...............................................OO.............OO..................................................................OOOOO................................................................................................................................................................O....................................................................................................................................................................................................................................................................................OO.................................OO..........................................................................................................................................................................OO.OO.OOOOOOOOOOOOOO....OOOOOOOOOOOOOO....OOOOOOOOOOOOOO....OOOOOOOOOOOOOO....OOOOOOOOOOOOOO....O......O.O......O.O......O.O......O.O......O.O......O.O......O.O......O.O......O.O......O.O......O.
+.................................................................OOOO.....................OOOOOO................................................OO.............OO...................................................................OOO..................................................................................................................................................................O..................................................................................................................................................................................................................................................................................OO.................................OO...........................................................................................................................................................................OO.OO............................................................................................OOOOOO...OOOOOO...OOOOOO...OOOOOO...OOOOOO...OOOOOO...OOOOOO...OOOOOO...OOOOOO...OOOOOO...OOOOOO..
+............................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................OO.OO..............................................................................................................................................................................................
+"""  # noqa: E501
+
+font_10x14 = """
+size 10x14 spacing 1,1
+ space     a          b          c          d          e          f          g          h          i          j          k          l          m          n          o          p          q          r          s          t          u          v          w          x          y          z          A          B          C          D          E          F          G          H          I          J          K          L          M          N          O          P          Q          R          S          T          U          V          W          X          Y          Z          0          1          2          3          4          5          6          7          8          9          !          "          #          $          %          &          '          (          )          *          +          ,          -          .          /          ;          :          <          =          >          ?          @          [          \\         ]          ^          `          {          |          }          ~          •          ·          ¬          ¶          2                    2                    2                    2                    2                    󰂎          󰁺          󰁻          󰁼          󰁽          󰁾          󰁿          󰂀          󰂁          󰂂          󰁹
+.......................OO..........................OO...................OOO.............OO.............OO..........OO....OO..........OOOOO.....................................................................................OO...........................................................................OOOO....OOOOOOOO.....OOOOOOO..OOOOOOO.....OOOOOOOO....OOOOOOO....OOOOOOO..OO......OO.OOOOOOOOOO.........OO.OO......OO.OO.........OOO....OOO.OO......OO...OOOOOO...OOOOOOOOO....OOOOOO...OOOOOOOO.....OOOOOOO..OOOOOOOOOO.OO......OO.OO......OO.OO......OO.OO......OO.OO......OO.OOOOOOOOOO...OOOOOO.......OO.......OOOOOO....OOOOOOOO.......OOO...OOOOOOOOOO......OO....OOOOOOOOOO...OOOOOO.....OOOOOO.......OO.......OO..OO.....OO..OO.......OO.......OO....OO...OOOOO........OO..........OO.......OO.....................................................................OO..........................................................OOOOOO.....OOOOOO.....OOOOOO...OO............OOOOOO......OO........OO............OOO......OO......OOO...............................................................................................................................................................................OOOO.......OOOO.......OOOO.......OOOO.......OOOO.......OOOO.......OOOO.......OOOO.......OOOO.......OOOO.......OOOO....
+.......................OO..........................OO..................OOOO.............OO.............OO..........OO....OO..........OOOOO.....................................................................................OO..........................................................................OOOOOO...OOOOOOOOO...OOOOOOOOO.OOOOOOOO...OOOOOOOOOO..OOOOOOOOO..OOOOOOOOO.OO......OO.OOOOOOOOOO.........OO.OO......OO.OO.........OOO....OOO.OOO.....OO..OOOOOOOO..OOOOOOOOOO..OOOOOOOO..OOOOOOOOO...OOOOOOOOO.OOOOOOOOOO.OO......OO.OO......OO.OO......OO.OO......OO.OO......OO.OOOOOOOOOO..OOOOOOOO.....OOO......OOOOOOOO..OOOOOOOOOO.....OOOO...OOOOOOOOOO.....OO.....OOOOOOOOOO..OOOOOOOO...OOOOOOOO......OO.......OO..OO.....OO..OO.....OOOOOO....O..O...OO..OOOOOOO.......OO.........OOO.......OOO....................................................................OO.........................................................OOOOOOOO...OOOOOOOO....OOOOOO...OO............OOOOOO......OO........OO...........OOOO......OO......OOOO....................................................OOOOOOOO................................................................................................................OOOOOOOO...OOOOOOOO...OOOOOOOO...OOOOOOOO...OOOOOOOO...OOOOOOOO...OOOOOOOO...OOOOOOOO...OOOOOOOO...OOOOOOOO...OO....OO..
+.......................OO..........................OO.................OO................OO...............................OO......O......OO.....................................................................................OO.........................................................................OO....OO..OO......OO.OOO........OO.....OO..OO.........OO.........OO.........OO......OO.....OO.............OO.OO....OO...OO.........OO.O..O.OO.OOOO....OO.OO......OO.OO......OO.OO......OO.OO......OO.OO.............OO.....OO......OO.OO......OO.OO......OO.OO......OO.OO......OO.........OO.OO.....OOO...OOOO.....OO......OO.OO......OO....OO.OO...OO............OO..............OO.OO......OO.OO......OO.....OO.......OO..OO.....OO..OO.....OOOOOO....O..O.OO...OO.....OO......OO........OO...........OO......OO..OO.....................................................OO................................OO..............OO........OO......OO.OO......OO...OO.........OO..............OO....OO..OO........OO........OO.........OO.........OO..................................................OOOOOOOOO.OOOOOOOOOOOOOOOOOO....OOOOOOOOOOOOOOOOOO....OOOOOOOOOOOOOOOOOO....OOOOOOOOOOOOOOOOOO....OOOOOOOOOOOOOOOOOO....O........O.O........O.O........O.O........O.O........O.O........O.O........O.O........O.O........O.O........O.O.OOOOOO.O.
+............OOOOOO.....OO.OOOO.....OOOOO......OOOOOOO....OOOOOO.......OO.......OOOOOO.O.OO.OOOO......OOOO.........OOO....OO.....OO......OO.....OO.OO..OO..OO..OOOO.....OOOOOO...OO.OOOOO.....OOOOO.OO.OOOO.OOOOO...OOOOOO...OOOOOOOOO..OO......OO.OO......OO.OO......OO.OO......OO.OO......OO.OOOOOOOOOO.OO......OO.OO......OO.OO.........OO......O..OO.........OO.........OO.........OO......OO.....OO.............OO.OO....OO...OO.........OO..OO..OO.OO.OO...OO.OO......OO.OO......OO.OO......OO.OO......OO.OO.............OO.....OO......OO.OO......OO.OO......OO...OO..OO...OO......OO.........OO.OO....O.OO..OO.OO.............OO.........OO...OO..OO...OO...........OO...............OO..O......OO.OO......OO.....OO.......OO..OO...OOOOOOOOOO.OO..OO..OO...OO..OO...OO....OO.......OO........OO...........OO......OO..OO.......OO............................................OO.......OO.........OO...........OO................OO.......OO......OO.OO..OOOOOO...OO.........OO..............OO....OO..OO........OO........OO.........OO.........OO.......OO........................................OOOOOO..OO.OOOOOOOOOOOOOOOOOO....OOOOOOOOOOOOOOOOOO....OOOOOOOOOOOOOOOOOO....OOOOOOOOOOOOOOOOOO....OOOOOOOOOOOOOOOOOO....O........O.O........O.O........O.O........O.O........O.O........O.O........O.O........O.O........O.O.OOOOOO.O.O.OOOOOO.O.
+...........OOOOOOOO....OOOOOOOO...OOOOOOO....OOOOOOOO...OOOOOOOO..OOOOOOOOO...OOOOOOOOO.OOOOOOOOO....OOOO........OOOO....OO....OO.......OO.....OOOOOOOOOO.OO.OOOOOO...OOOOOOOO..OOOOOOOOO...OOOOOOOOO.OOOOOOOOOO..OOOOOOOO..OOOOOOOOO..OO......OO.OO......OO.OO......OO.OO......OO.OO......OO.OOOOOOOOOO.OO......OO.OO.....OO..OO.........OO......OO.OO.........OO.........OO.........OO......OO.....OO.............OO.OO..OO.....OO.........OO..OO..OO.OO..OO..OO.OO......OO.OO......OO.OO......OO.OO......OO..OO............OO.....OO......OO...OO..OO...OO......OO...OO..OO...OO......OO.......OO...OO...O..OO.OO..OO.............OO........OO...OO...OO...OO..........OO................OO..O......OO.OO......OO.....OO................OOOOOOOOOO.OO..OO..........OO.....OO..OO.................OO.............OO.......OO.........OO...........................................OO........OO.........OO.........OOO.....OOOOOOOO.....OOO............OO..OO.OOOOOOO...OO..........OO.............OO..OO......OO................OO.........OO.........OO......OOOO..........OO...........................OOOOOO..OO.OO..............OO....OO..............OO....OO..............OO....OO..............OO....OO..............OO....O........O.O........O.O........O.O........O.O........O.O........O.O........O.O........O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.
+.................OOO...OO.....OO.OO.....OO..OO.....OO..OO......OO.OOOOOOOOO..OO......OO.OO......OO.....OO..........OO....OO...OO........OO.....OOO.OOO.OO.OOOO....OO.OO......OO.OO......OO.OO......OO...OOO......OO......OO....OO......OO......OO..OO....OO..OO......OO...OO..OO...OO......OO.........OO.OOOOOOOOOO.OOOOOOOO...OO.........OO......OO.OOOOOOOO...OOOOOOOO...OO...OOOO..OOOOOOOOOO.....OO.............OO.OOOOOO.....OO.........OO......OO.OO...OO.OO.OO......OO.OOOOOOOOO..OO......OO.OOOOOOOOO...OOOOOO........OO.....OO......OO...OO..OO....OO....OO......OO......OOOOOOOOO.....OO.....OO..OO..OO.....OO............OO.......OOO...OOOOOOOOOO.OOOOOOOO....OOOOOOO..........OO...OOOOOOOO...OOOOOOOOO.....OO..................OO..OO.....OOOOOO........OO......OOOO..................OO.............OO...OOOOOOOOOO.OOOOOOOOOO............OOOOOOOOOO.................OO............................OOO.......OOOOOOOO.......OOO........OOO...OO.OO...OO...OO..........OO.............OO..OO......OO..............OO...........OO...........OO...OO..OO..OO....OOOO........OO......OOOOOOOO..OOOOOO..OO.OO..............OO....OO.OOO..........OO....OO.OOOOOO.......OO....OO.OOOOOOOOO....OO....OO.OOOOOOOOOOOO.OO....O........O.O........O.O........O.O........O.O........O.O........O.O........O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.
+............OOOOOOOO...OO.....OO.OO.........OO.....OO..OOOOOOOOOO.....OO.....OO......OO.OO......OO.....OO..........OO....OO..OO.........OO.....OO..OO..OO.OOO.....OO.OO......OO.OO......OO.OO......OO...OO........OO...........OO......OO......OO..OO....OO...OO....OO.....OOOO....OO......OO.......OO...OOOOOOOOOO.OOOOOOOO...OO.........OO......OO.OOOOOOOO...OOOOOOOO...OO..OOOOOO.OOOOOOOOOO.....OO.............OO.OOOOOO.....OO.........OO......OO.OO....O.OO.OO......OO.OOOOOOOO...OO......OO.OOOOOOOO......OOOOOO......OO.....OO......OO...OO..OO....OO.OO.OO......OO.......OOOOOOOO.....OO.....OO..O...OO.....OO..........OO.........OOO...OOOOOOOOOO.OOOOOOOOO...OOOOOOOO........OO....OOOOOOOO....OOOOOOOO.....OO..................OO..OO.....OOOOOO......OO........OOO...................OO.............OO...OOOOOOOOOO.OOOOOOOOOO............OOOOOOOOOO...............OO.............................OO..........................OO......OOO....OO.OOOOOOO...OO............OO...........OO..........................OO...........OO...........OO...OO..OO..OO....OOOO........OO......OOOOOOOO...OOOOO..OO.OO..............OOOOO.OO.OOO..........OOOOO.OO.OOOOOO.......OOOOO.OO.OOOOOOOOO....OOOOO.OO.OOOOOOOOOOOO.OOOOO.O........O.O........O.O........O.O........O.O........O.O........O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.
+...........OOOOOOOOO...OO.....OO.OO.........OO.....OO..OOOOOOOOOO.....OO.....OO......OO.OO......OO.....OO..........OO....OOOOO..........OO.....OO..OO..OO.OO......OO.OO......OO.OO......OO.OO......OO...OO.........OOOOOO......OO......OO......OO...OO..OO....OO.OO.OO......OO.....OO.....OOO.....OO.....OO......OO.OO.....OO..OO.........OO......OO.OO.........OO.........OO......OO.OO......OO.....OO.............OO.OO..OO.....OO.........OO......OO.OO.....OOO.OO......OO.OO.........OO......OO.OO...OO...........OO......OO.....OO......OO...OO..OO....OO.OO.OO....OO..OO...........OO...OO.......OO..O...OO.....OO........OO.............OO........OO...........OO..OO.....OO......OO....OO......OO........OO......OO................OOOOOOOOOO.....OO..OO....OO.......OO.OO..................OO.............OO.......OO.........OO.........................................OO.............................OO..........................OO......OO.....OO..OOOOO....OO............OO...........OO............................OO.........OO.........OO..........OOOO......OO.......................OO....OOOO..OO.OO..............OOOOO.OO.OOO..........OOOOO.OO.OOOOOO.......OOOOO.OO.OOOOOOOOO....OOOOO.OO.OOOOOOOOOOOO.OOOOO.O........O.O........O.O........O.O........O.O........O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.
+...........OO.....OO...OO.....OO.OO.........OO.....OO..OO.............OO......OOOOOOOOO.OO......OO.....OO..........OO....OOOOO..........OO.....OO..OO..OO.OO......OO.OO......OO.OO......OO.OO......OO...OO..............OO.....OO......OO......OO...OO..OO....OO.OO.OO.....OOOO.....OOOOOOOOO...OO.......OO......OO.OO......OO.OO.........OO......O..OO.........OO.........OO......OO.OO......OO.....OO.............OO.OO....OO...OO.........OO......OO.OO......OO.OO......OO.OO.........OO...OO.OO.OO...OOO...........OO.....OO.....OO......OO...OO..OO....OO.OO.OO....OO..OO...........OO.OO.........OO.O....OO.....OO......OO................OO.......OO...........OO..OO.....OO.....OO.....OO......OO.......OO.........................OOOOOOOOOO.OO..OO..OO...OO...OO..OO...OO.OO...............OO...........OO......OO..OO.......OO........................................OO...............................OOO.......OOOOOOOO.......OOO.......OO.....OO...........OO.............OO..........OO............................OO.........OO.........OO...........OO................................OO.....OOO..OO.OO..............OOOOO.OO.OOO..........OOOOO.OO.OOOOOO.......OOOOO.OO.OOOOOOOOO....OOOOO.OO.OOOOOOOOOOOO.OOOOO.O........O.O........O.O........O.O........O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.
+...........OO.....OO...OO.....OO.OO.....OO..OO.....OO..OO......OO.....OO.......OOOOOOOO.OO......OO.....OO..........OO....OO..OOO........OO.....OO..OO..OO.OO......OO.OO......OO.OOO.....OO.OO.....OOO...OO.......OO......OO....OO......OO.....OOO....OOOO......OOOOOO.....OO..OO.......OOO.OO.OO.........OO......OO.OO......OO.OOO........OO.....OO..OO.........OO.........OO......OO.OO......OO.....OO.............OO.OO....OO...OO.........OO......OO.OO......OO.OO......OO.OO.........OO...OO.OO.OO....OOO..........OO.....OO.....OO......OO.....OO......OO.OO.OO..OO......OO.........OO.OO.........OOO.....OO.....OO......OO........OO......OO.......OO...........OO..OO.....OO....OO......OO......OO......OO........OO..................OO..OO.....OOOOOO.....OO..O..O.OO....OO.................OO...........OO......OO..OO.................................................OO.................................OOO.....OOOOOOOO.....OOO................OO...........OO.............OO..........OO............................OO.........OO.........OO.............................................OO......OO..OO.OO..............OO....OO.OOO..........OO....OO.OOOOOO.......OO....OO.OOOOOOOOO....OO....OO.OOOOOOOOOOOO.OO....O........O.O........O.O........O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.
+............OOOOOOOO...OOOOOOOO...OOOOOOO....OOOOOOOO...OOOOOOOO...OOOOOOOO..........OO.OO......OO..OOOOOOOO.......OO....OO....OOO..OOOOOOOOOO.OO..OO..OO.OO......OO..OOOOOOOO..OOOOOOOOO...OOOOOOOOO.OOOOOOO.....OOOOOOOO.....OOOOOO...OOOOOOOOO.....OO.......OO..OO...OO......OO.........OO.OOOOOOOOOO.OO......OO.OOOOOOOOO...OOOOOOOOO.OOOOOOOO...OOOOOOOOOO.OO..........OOOOOOOO..OO......OO.OOOOOOOOOO.OOOOOOOOO..OO......OO..OOOOOOOOO.OO......OO.OO......OO..OOOOOOOO..OO..........OOOOOOOO..OO.....OOO.OOOOOOOOO......OO......OOOOOOOO......OO.......OO..OO...OO......OO..OOOOOOOO..OOOOOOOOOO..OOOOOOOO..OOOOOOOOOO.OOOOOOOOOO.OOOOOOOOOO.......OO...OOOOOOOOO...OOOOOOOOO...OO........OOOOOOOO......OO.........OO..................OO..OO.....OOOOOO...OO....O..O..OOOOO.OO.................OOO.......OOO................................OO...................OO.....OO.............OO.........OO...........OO................OO...........OO......OOOOOOOO....OOOOOO...........OO....OOOOOO.............................OOOO......OO......OOOO......................................................OO..OO.OO..............OO....OO..............OO....OO..............OO....OO..............OO....OO..............OO....O........O.O........O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.
+.............OOOOO.OO.OO.OOOOO.....OOOOO......OOOOOO.O...OOOOOO....OOOOOOOO.........OOO.OO......OO..OOOOOOOO.......OO....OO......OO.OOOOOOOOOO.OO..OO..OO.OO......OO...OOOOOO...OO.OOOOO.....OOOOOOOO.OOOOOOO......OOOOOO.......OOOOO....OOOO..OO.....OO.......OO..OO...OO......OO.........OO.OOOOOOOOOO.OO......OO.OOOOOOOO.....OOOOOOO..OOOOOOO.....OOOOOOOO..OO...........OOOOOO...OO......OO.OOOOOOOOOO..OOOOOOO...OO......OO...OOOOOOO..OO......OO.OO......OO...OOOOOO...OO...........OOOOOO...OO......OO..OOOOOOO.......OO.......OOOOOO.......OO.......OO..OO...OO......OO...OOOOOO...OOOOOOOOOO...OOOOOO...OOOOOOOOOO.OOOOOOOOOO..OOOOOOOO........OO....OOOOOOO.....OOOOOOO...OO..........OOOOOO......OO..............................OO..OO.......OO.....OO.....OO....OOO...OO.................OO.......OO.................................OO...................OO.....OO.............OO.........OO............OO..............OO............OO.......OOOOOO.....OOOOOO...........OO....OOOOOO..............................OOO......OO......OOO.......................................................OO..OO.OOOOOOOOOOOOOOOOOO....OOOOOOOOOOOOOOOOOO....OOOOOOOOOOOOOOOOOO....OOOOOOOOOOOOOOOOOO....OOOOOOOOOOOOOOOOOO....O........O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.O.OOOOOO.O.
+..............................................................................OOOOOOOO.........................OOOOOO...........................................................OO.................OO................................................................................OOOOOOO....................................................................................................................................................................................................OO................................................................................................................................................................................................................................................................................................................................................OO.........................................OO................................................................................................................................................................................................................OO..OO.OOOOOOOOOOOOOOOOOO....OOOOOOOOOOOOOOOOOO....OOOOOOOOOOOOOOOOOO....OOOOOOOOOOOOOOOOOO....OOOOOOOOOOOOOOOOOO....O........O.O........O.O........O.O........O.O........O.O........O.O........O.O........O.O........O.O........O.O........O.
+...............................................................................OOOOOO.........................OOOOOO............................................................OO.................OO.................................................................................OOOOO.....................................................................................................................................................................................................OO...............................................................................................................................................................................................................................................................................................................................................OO.........................................OO.................................................................................................................................................................................................................OO..OO................................................................................................................OOOOOOOO...OOOOOOOO...OOOOOOOO...OOOOOOOO...OOOOOOOO...OOOOOOOO...OOOOOOOO...OOOOOOOO...OOOOOOOO...OOOOOOOO...OOOOOOOO..
+...............................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................OO..OO........................................................................................................................................................................................................................................
+"""  # noqa: E501
+
+
+"""Symbols string definition format:
+The string contains several symbol definitions, one after another.
+
+A symbol can have a size larger than the one it declares.
+It will be drawn at the position specified by the user, whatever that means.
+
+This allows for using symbols as a way of an overlay image.
+
+Format:
+    First line: "size <int>x<int> code <character>".
+    Next lines: using PIXEL_DOT_TRUE and PIXEL_DOT_FALSE, are drawn the characters.
+"""
+
+# extra_symbols = """
+# size 5x7 code a
+# OOOOOOOOOO
+# O........O
+# O.OOOOOO.O
+# O.O....O.O
+# O.O.OO.O.O
+# O.O.OO.O.O
+# O.O....O.O
+# O.OOOOOO.O
+# O........O
+# OOOOOOOOOO
+# """
+
+FONTS = [
+    font_5x5,
+    font_5x7,
+    font_5x9,
+    font_8x14,
+    font_10x14,
+]
+
+SYMBOLS = [
+    # extra_symbols,
+]
+
+
+if __name__ == "__main__":
+    main()
