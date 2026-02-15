@@ -16,50 +16,34 @@ data.
 The program is tailored to run in daemon mode and be controlled with the client, still
 there is a oneshot mode that allows to easily run it. Examples of running oneshot mode:
 
-Menu interface. Use cursors, enter and escape keys to navigate the menu and activate
-items (requires fzf to be available):
+Download program:
 
-```sh
+```
 wget -O mleds https://github.com/amospalla/reform/releases/download/v0.0.3/mleds
 chmod 0755 mleds
-sudo ./mleds oneshot-menu
 ```
 
-Play tetris:
+- Menu interface (requires fzf):
+  - ```bash
+    sudo ./mleds oneshot-menu`
+    ```
 
-```sh
-wget -O mleds https://github.com/amospalla/reform/releases/download/v0.0.3/mleds
-chmod 0755 mleds
-sudo ./mleds oneshot "action=run_client name=tetris end=true"
-```
+- Tetris:
+  - ```bash
+    sudo ./mleds oneshot "action=run_client name=tetris end=true"
+    ```
 
-Keypresses and matrix clients (try using the keyboard with this one):
+- Keypresses and matrix rainbow effect (try using the keyboard with this one):
+  - ```bash
+    sudo ./mleds oneshot "action=play_movie name=startup1 priority=urgent end=true action=play_movie name=matrix priority=background end=true action=run_client name=keypresses end=true"
+    ```
 
-```sh
-wget -O mleds https://github.com/amospalla/reform/releases/download/v0.0.3/mleds
-chmod 0755 mleds
-sudo ./mleds oneshot "action=play_movie name=startup1 priority=urgent end=true action=play_movie name=matrix priority=background end=true action=run_client name=keypresses end=true"
-```
-
-Same oneshot as above, but with lowered brightness:
-
-```sh
-sudo ./mleds oneshot "action=set_intensity intensity=0.3 end=true action=play_movie name=startup1 priority=urgent end=true action=play_movie name=matrix priority=background end=true action=run_client name=keypresses end=true action=run_client name=battery end=true"
-```
-
-Play some demos:
-
-```sh
-sudo ./mleds oneshot "action=play_movie name=background1 priority=background end=true"
-sudo ./mleds oneshot "action=play_movie name=background2 priority=background end=true"
-sudo ./mleds oneshot "action=play_movie name=background3 priority=background end=true"
-```
-
-List available movies on oneshot mode:
-
-```sh
-./mleds oneshot "action=status end=true"
-```
+- Play some demos:
+  - ```sh
+    sudo ./mleds oneshot "action=play_movie name=background1 priority=background end=true"
+    sudo ./mleds oneshot "action=play_movie name=background2 priority=background end=true"
+    sudo ./mleds oneshot "action=play_movie name=background3 priority=background end=true"
+    ```
 
 ## Concepts
 
