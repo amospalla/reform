@@ -114,12 +114,6 @@ COLOR_PATTERN_DOT = re.compile(rf"^[{PIXEL_DOT_TRUE}{PIXEL_DOT_FALSE}]+$")
 FONT_HEADER_PATTERN = re.compile(r"^size ([0-9]+x[0-9]+) spacing ([0-9]+),([0-9]+)$")
 FONT_SIZE_PATTERN = re.compile(r"^[0-9]+x[0-9]+$")
 SYMBOL_HEADER_PATTERN = re.compile(r"^size ([0-9]+x[0-9]+) code (.)$")
-KEYBOARD_WIDTH = 12
-KEYBOARD_HEIGHT = 6
-KEYBOARD_PIXELS = KEYBOARD_WIDTH * KEYBOARD_HEIGHT
-OLED_WIDTH = 128
-OLED_HEIGHT = 32
-OLED_PIXELS = OLED_WIDTH * OLED_HEIGHT
 DEFAULT_COLOR = Color.purple
 FALLBACK_CHARACTER = "?"
 READ_FROM_STDIN = Path("/")
@@ -573,12 +567,12 @@ def get_hidraws(
 
 
 class Output(ABC):
-    width: int
-    height: int
     name: str
 
-    def __init__(self, hidraw: Path) -> None:
+    def __init__(self, hidraw: Path, width: int, height: int) -> None:
         self.hidraw = hidraw
+        self.width = width
+        self.height = height
 
     def write(self, pixels: Pixels) -> None:
         """Send the input list of pixels to the output."""
@@ -602,9 +596,7 @@ class Output(ABC):
 
 
 class KeyboardLeds(Output):
-    width = KEYBOARD_WIDTH
-    height = KEYBOARD_HEIGHT
-    name = "Keyboard leds"
+    name = "keyboard leds"
 
     def fill(self, color: RGBT) -> None:
         # Note: lrgb hidraw command does also fill the keyboard leds.
@@ -637,8 +629,6 @@ class KeyboardLeds(Output):
 
 
 class OledDisplay(Output):
-    width = OLED_WIDTH
-    height = OLED_HEIGHT
     name = "OLED display"
     wbio_pages = 4
     wbio_chunk_size = 43
@@ -713,9 +703,7 @@ class OledDisplay(Output):
 
 
 class Stdout(Output):
-    width = OLED_WIDTH
-    height = OLED_HEIGHT
-    name = "debug"
+    name = "standard output"
 
     def fill(self, color: RGBT) -> None:
         value = any(i for i in color)
@@ -1089,11 +1077,21 @@ def main() -> None:  # noqa: C901
     try:
         match args.output:
             case "keyboard":
-                output: Output = KeyboardLeds(get_hidraws(True, "keyboard")[0].path)  # ty:ignore[invalid-argument-type]
+                hidraw = get_hidraws(True, "keyboard")[0]
+                output: Output = KeyboardLeds(
+                    hidraw.path,  # ty:ignore[invalid-argument-type]
+                    hidraw.keyboard_leds_width,
+                    hidraw.keyboard_leds_height,
+                )
             case "oled":
-                output = OledDisplay(get_hidraws(True, "oled")[0].path)  # ty:ignore[invalid-argument-type]
+                hidraw = get_hidraws(True, "oled")[0]
+                output = OledDisplay(
+                    hidraw.path,  # ty:ignore[invalid-argument-type]
+                    hidraw.oled_width,
+                    hidraw.oled_heiht,
+                )
             case "stdout":
-                output = Stdout(Path("/"))
+                output = Stdout(Path("/"), 128, 32)
             case _:
                 raise ValueError("Invalid output")
 

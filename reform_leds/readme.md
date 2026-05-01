@@ -1,7 +1,12 @@
 # reform-leds
 
-The script is known to work with MNT Pocket Reform keyboard, and should work with the
-MNT Reform Keyboard 4.0 OLED display altough has not been tested by myself.
+The script is known to work with:
+
+- MNT Pocket Reform/keyboard leds: using XRGB HID command.
+
+Should work (not tested) on:
+
+- MNT Reform Keyboard 4.0/OLED display: using WBIO HID command.
 
 Output of the command main help:
 
@@ -22,6 +27,7 @@ Available commands:
     draw                put an image from a text file
     bitmap              put an image from a binary bitmap file
     text                put text from a file
+    hidraw              list known devices
 
 Examples:
    reform-leds fill keyboard --color purple
