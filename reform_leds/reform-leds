@@ -17,6 +17,7 @@
 
 
 import argparse
+import dataclasses
 import enum
 import logging
 import re
@@ -31,6 +32,32 @@ from typing import Literal
 
 type CharacterT = tuple[tuple[bool, ...], ...]
 type RGBT = tuple[int, int, int]
+
+
+@dataclasses.dataclass
+class Hidraw:
+    name: str
+    udev_pattern: str
+    has_oled: bool
+    oled_width: int
+    oled_heiht: int
+    has_keyboard_leds: bool
+    keyboard_leds_width: int
+    keyboard_leds_height: int
+    path: Path | None = None
+    available: bool = False
+
+    def print(self) -> None:
+        if self.path is None:
+            path = ""
+        else:
+            path = f" path={self.path}"
+        print(
+            f"{self.name}:",
+            f"available={self.available}{path}",
+            f"oled={self.oled_width}x{self.oled_heiht}",
+            f"keyboard={self.keyboard_leds_width}x{self.keyboard_leds_height}",
+        )
 
 
 class HidrawDeviceNotFoundError(Exception):
@@ -49,6 +76,20 @@ class InvalidTokenError(Exception):
     pass
 
 
+KNOWN_HIDRAWS = [
+    Hidraw(
+        name="MNT Pocket Reform",
+        udev_pattern=r"^HID_NAME=MNT Pocket Reform Input.*",
+        has_oled=True,
+        oled_width=128,
+        oled_heiht=32,
+        has_keyboard_leds=True,
+        keyboard_leds_height=6,
+        keyboard_leds_width=12,
+    ),
+]
+
+
 class Color(enum.Enum):
     red = (100, 0, 0)
     green = (0, 255, 0)
@@ -65,7 +106,6 @@ class Color(enum.Enum):
 KNOWN_COLORS = ", ".join(c.name for c in Color)
 PROGRAM_VERSION = "0.0.1"
 PROGRAM_NAME = "reform-leds"
-HIDRAW_RE_PATTERNS = (r"^HID_NAME=MNT Pocket Reform Input.*",)
 PIXEL_DOT_TRUE = "O"
 PIXEL_DOT_FALSE = "."
 COLOR_PATTERN_HEX = re.compile(r"^#?([a-fA-F0-9]{6})$")
@@ -156,15 +196,6 @@ def argparse_add_output_argument(subparser: argparse.ArgumentParser) -> None:
     )
 
 
-def argparse_add_hidraw_path_argument(subparser: argparse.ArgumentParser) -> None:
-    """Add a '--hidraw' argument to a parser."""
-    subparser.add_argument(
-        "--hidraw",
-        type=argparse_file_path,
-        help="override hidraw device path autodetection",
-    )
-
-
 def argparse_add_color_argument(subparser: argparse.ArgumentParser) -> None:
     """Add a '-c|--color' argument to a parser."""
     subparser.add_argument(
@@ -249,7 +280,6 @@ def argparse_get_args() -> argparse.Namespace:
     )
     argparse_add_output_argument(subparser_fill)
     argparse_add_color_argument(subparser_fill)
-    argparse_add_hidraw_path_argument(subparser_fill)
 
     # Draw #############################################################################
     epilog = f"""
@@ -284,7 +314,6 @@ def argparse_get_args() -> argparse.Namespace:
     argparse_add_output_argument(subparser_draw)
     argparse_add_color_argument(subparser_draw)
     argparse_add_file_argument(subparser_draw)
-    argparse_add_hidraw_path_argument(subparser_draw)
 
     # Bitmap ###########################################################################
     epilog = f"""
@@ -308,7 +337,6 @@ def argparse_get_args() -> argparse.Namespace:
         help='bitmap file format: "1bit" or 8 bit color depth "rgb"',
     )
     argparse_add_color_argument(subparser_bitmap)
-    argparse_add_hidraw_path_argument(subparser_bitmap)
     argparse_add_file_argument(subparser_bitmap)
 
     # Text #############################################################################
@@ -386,8 +414,10 @@ def argparse_get_args() -> argparse.Namespace:
         default=0.2,
         help="seconds to wait between scroll movements (default=0.2)",
     )
-    argparse_add_hidraw_path_argument(subparser_text)
     argparse_add_file_argument(subparser_text)
+
+    # Hidraw ###########################################################################
+    subparsers.add_parser("hidraw", help="list available hidraw devices")
 
     return parser.parse_args()
 
@@ -515,29 +545,40 @@ class Pixels:
                 return len(self._rgb_pixels)
 
 
+def get_hidraws(
+    first_only_required: bool,
+    requires: Literal["oled", "keyboard"] | None = None,
+) -> list[Hidraw]:
+    if requires == "oled":
+        all_hidraw = [h for h in KNOWN_HIDRAWS if h.has_oled]
+    elif requires == "keyboard":
+        all_hidraw = [h for h in KNOWN_HIDRAWS if h.has_keyboard_leds]
+    else:
+        all_hidraw = KNOWN_HIDRAWS
+    for hidraw in all_hidraw:
+        for hidraw_device_path in Path("/sys/class/hidraw/").glob("*"):
+            if hidraw.path is not None:
+                break
+            with (hidraw_device_path / "device/uevent").open("r") as f:
+                if re.search(hidraw.udev_pattern, f.read(), re.MULTILINE):
+                    hidraw.path = Path("/dev/" + hidraw_device_path.name)
+                    hidraw.available = True
+                    if first_only_required:
+                        return [hidraw]
+
+    if first_only_required:
+        logger.error("No known device found.")
+        raise HidrawDeviceNotFoundError
+    return KNOWN_HIDRAWS
+
+
 class Output(ABC):
     width: int
     height: int
     name: str
 
-    def __init__(self, hidraw_path: Path | None = None) -> None:
-        self.hidraw = hidraw_path or self._get_hidraw_path()
-
-    def _get_hidraw_path(self) -> Path:
-        """Return the hidraw device path for this MNT Pocket Reform machine.
-
-        Do not expect there is an UDEV rule setting a known path for the device,
-        instead search actively files for it.
-        """
-        for hidraw_device_path in Path("/sys/class/hidraw/").glob("*"):
-            with (hidraw_device_path / "device/uevent").open("r") as f:
-                for hidraw_re_pattern in HIDRAW_RE_PATTERNS:
-                    if re.search(hidraw_re_pattern, f.read(), re.MULTILINE):
-                        return Path("/dev/" + hidraw_device_path.name)
-        logger.error(
-            "Hidraw device not found, please use --hidraw.",
-        )
-        raise HidrawDeviceNotFoundError
+    def __init__(self, hidraw: Path) -> None:
+        self.hidraw = hidraw
 
     def write(self, pixels: Pixels) -> None:
         """Send the input list of pixels to the output."""
@@ -1035,19 +1076,24 @@ def command_text(  # noqa: C901, PLR0912
         time.sleep(scroll_sleep)
 
 
-def main() -> None:
+def main() -> None:  # noqa: C901
     args = argparse_get_args()
     Log.set_logging_level(args.log_level)
     logger.info("User supplied arguments: %s.", args)
 
+    if args.command == "hidraw":
+        for h in get_hidraws(False):
+            h.print()
+        return
+
     try:
         match args.output:
             case "keyboard":
-                output: Output = KeyboardLeds(hidraw_path=args.hidraw)
+                output: Output = KeyboardLeds(get_hidraws(True, "keyboard")[0].path)  # ty:ignore[invalid-argument-type]
             case "oled":
-                output = OledDisplay(hidraw_path=args.hidraw)
+                output = OledDisplay(get_hidraws(True, "oled")[0].path)  # ty:ignore[invalid-argument-type]
             case "stdout":
-                output = Stdout()
+                output = Stdout(Path("/"))
             case _:
                 raise ValueError("Invalid output")
 
