@@ -51,7 +51,7 @@ List of known name colors: red, green, blue, black, white, orange, pink, violet,
 Examples:
 
 ```bash
-$ echo -e "battery:\n 󰁾" | reform-leds text oled --font-size 10x14 -
+$ echo -e "battery:\n        󰁾" | reform-leds text oled --font-size 10x14 -
 ```
 
 ![img1](https://file.amospalla.es/misc/reform_leds_text.jpg)
