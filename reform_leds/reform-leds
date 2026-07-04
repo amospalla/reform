@@ -52,11 +52,19 @@ class Hidraw:
             path = ""
         else:
             path = f" path={self.path}"
+        if self.has_oled:
+            oled_text = f"{self.oled_width}x{self.oled_heiht}"
+        else:
+            oled_text = "no"
+        if self.has_keyboard_leds:
+            keyboard_text = f"{self.keyboard_leds_width}x{self.keyboard_leds_height}"
+        else:
+            keyboard_text = "no"
         print(
             f"{self.name}:",
             f"available={self.available}{path}",
-            f"oled={self.oled_width}x{self.oled_heiht}",
-            f"keyboard={self.keyboard_leds_width}x{self.keyboard_leds_height}",
+            f"oled={oled_text}",
+            f"keyboard={keyboard_text}",
         )
 
 
