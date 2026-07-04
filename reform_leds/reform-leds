@@ -1019,9 +1019,10 @@ def command_text(  # noqa: C901, PLR0912
         scroll_direction = 0
     else:
         scroll_direction = 1
+    text_lines = [line.rstrip() for line in lines]
     while True:
         bool_matrix, current_overflow = text_instance.text_matrix(
-            text_lines=[line.rstrip() for line in lines],
+            text_lines=text_lines,
             matrix_width=output.width,
             matrix_height=output.height,
             offset=offset,
